@@ -12,7 +12,7 @@ library(here)
 
 knitr::opts_chunk$set(echo = FALSE)
 
-thirty_degree_total_rna_count <- read_tsv(here("./data/DAD-80.txt"),
+thirty_degree_total_rna_count <- read_tsv(here("./data/input/DAD-80.txt"),
                                           col_names = c("gene_name",
                                                         "count")) %>%
   mutate(count = as.integer(count), src = "exp") %>%
@@ -74,4 +74,8 @@ total_sup_pel_simulated_noisy_counts <- total_sup_pel_simulated_mean_counts %>%
   mutate(total = as.integer(total),
          sup = as.integer(sup),
          pel = as.integer(pel))
+```
+
+```{r output-sim-counts}
+write_tsv(total_sup_pel_simulated_noisy_counts, here("data/output/simulated_counts/total_sup_pel_simulated_noisy_counts.tsv"))
 ```
