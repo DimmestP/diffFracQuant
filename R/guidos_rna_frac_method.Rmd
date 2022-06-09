@@ -7,6 +7,12 @@ output: html_document
 
 ```{r setup, include=false}
 library(rstan)
+library(tidyverse)
+library(here)
+
+options(mc.cores = parallel::detectCores())
+
+total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_counts.tsv"))
 ```
 
 ```{r mixingratiosTSP_stan}
@@ -16,7 +22,7 @@ mdat_mixingTSP <- function(ctdata) {
     list(NRNA=nrow(ctdata),
          tot_obs=as.integer(round(ctdata$total)),
          sup_obs=as.integer(round(ctdata$sup)),
-         p100_obs=as.integer(round(ctdata$pel))
+         pel_obs=as.integer(round(ctdata$pel))
          )
     
 }
@@ -32,28 +38,48 @@ data {
   // columns t, s, p
   int<lower=0> tot_obs[NRNA];
   int<lower=0> sup_obs[NRNA];
-  int<lower=0> p100_obs[NRNA];
+  int<lower=0> pel_obs[NRNA];
 }
 parameters {
-  // Unnormalized mixing proportions
-  // real<lower=0> mixing_t;
-  real<lower=0> mixing_sup;
-  real<lower=0> mixing_p100;
+  // Normalising factors
+  real<lower=0> tot_norm_factor;
+  real<lower=0> sup_norm_factor;
+  real<lower=0> pel_norm_factor;
+  
+  // latent counts
+  real<lower=0> sup_latent[NRNA];
+  real<lower=0> pel_latent[NRNA];
+  
+  // latent count gamma prior parameters
+  real<lower=0> sup_gamma_alpha;
+  real<lower=0> sup_gamma_beta;
+  real<lower=0> pel_gamma_alpha;
+  real<lower=0> pel_gamma_beta;
   
   // dispersion parameter for counts
-  real phi;
+  real tot_phi;
 }
 model{
-  // mixing ratios
-  mixing_sup ~ gamma(1,1);
-  mixing_p100 ~ gamma(1,1);
+  // normalising factors
+  tot_norm_factor ~ gamma(1,1);
+  sup_norm_factor ~ gamma(1,1);
+  pel_norm_factor ~ gamma(1,1);
+  
+  // latent counts
+  sup_latent ~ gamma(sup_gamma_alpha, sup_gamma_beta);
+  pel_latent ~ gamma(pel_gamma_alpha, pel_gamma_beta);
+  
   // Cauchy prior for negbin dispersion parameter
-  phi ~ cauchy(0,3);
+  tot_phi ~ cauchy(0,3);
   
   for(idx in 1:NRNA){ 
+    // fractions
+    sup_obs[idx] ~ poisson(sup_norm_factor * sup_latent[idx]);
+    pel_obs[idx] ~ poisson(pel_norm_factor * pel_latent[idx]);
+  
     // count distn negative binomial with specified means
-    // Total
-    tot_obs[idx] ~ neg_binomial_2(mixing_sup * sup_obs[idx] + mixing_p100 * p100_obs[idx], phi);
+    // total
+    tot_obs[idx] ~ neg_binomial_2(tot_norm_factor * (sup_latent[idx] + pel_latent[idx]), tot_phi);
   }
 
 }
@@ -82,14 +108,40 @@ getmixingratiosTSP <- function(ctdata,iter=1000,
         summary()
     # return medians
     data.frame(
-        mixing.Sup=stansummary$summary["mixing_sup","50%"],
-        mixing.P100=stansummary$summary["mixing_p100","50%"],
+        tot_norm_factor=stansummary$summary["tot_norm_factor","50%"],
+        sup_norm_factor=stansummary$summary["sup_norm_factor","50%"],
+        pel_norm_factor=stansummary$summary["pel_norm_factor","50%"],
+        sup_gamma_alpha=stansummary$summary["sup_gamma_alpha","50%"],
+        sup_gamma_beta=stansummary$summary["sup_gamma_beta","50%"],
+        pel_gamma_alpha=stansummary$summary["pel_gamma_alpha","50%"],
+        pel_gamma_beta=stansummary$summary["pel_gamma_beta","50%"],
         lp.n_eff  =stansummary$summary["lp__","n_eff"],
         lp.Rhat   =stansummary$summary["lp__","Rhat"])
 }
 
 ```
 
-```{r pressure, echo=FALSE}
-plot(pressure)
+```{r run-stan-model-on-sim-data}
+
+# compile stan model, test it with 10 iterations, save output
+stan_count_model <- total_sup_pel_simulated_noisy_counts %>%
+  filter(total > 5,
+         sup > 5,
+         pel > 5) %>%
+    make_mixingTSP()
+
+# Specify a seed for random number generator so output is reproducible
+myseed = 39
+
+# run stan mixing ratio inference, reusing same model
+mixing_ratios_TSP <- total_sup_pel_simulated_noisy_counts %>%
+  filter(total > 5,
+         sup > 5,
+         pel > 5) %>%
+    getmixingratiosTSP(, stan_mixing=stan_count_model,iter=500,seed=myseed)
+
+```
+
+```{r output_results}
+write_tsv(mixing_ratios_TSP, here("data/output/stan_model/mixing_ratios_TSP_latent.tsv"))
 ```

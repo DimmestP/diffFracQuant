@@ -7,6 +7,10 @@ output: html_document
 
 ```{r setup, include=false}
 library(rstan)
+library(tidyverse)
+library(here)
+
+total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_counts.tsv"))
 ```
 
 ```{r mixingratiosTSP_stan}
@@ -130,4 +134,8 @@ ggplot(total_sup_pel_sim_model_frac %>%
   geom_point(aes(x = total, y = sum, colour = src)) +
   geom_abline(slope = 1, intercept = 0)
 
+```
+
+```{r output_results}
+write_tsv(mixing_ratios_TSP, here("data/output/stan_model/mixing_ratios_TSP_raw.tsv"))
 ```
