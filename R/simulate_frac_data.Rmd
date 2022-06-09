@@ -1,0 +1,77 @@
+---
+title: "Simulated Fractionation Dataset"
+author: "Sam Haynes"
+date: '2022-06-08'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(tidyverse)
+library(MASS)
+library(here)
+
+knitr::opts_chunk$set(echo = FALSE)
+
+thirty_degree_total_rna_count <- read_tsv(here("./data/DAD-80.txt"),
+                                          col_names = c("gene_name",
+                                                        "count")) %>%
+  mutate(count = as.integer(count), src = "exp") %>%
+  filter(count > 0)
+```
+
+```{r fit-lnorm-rna-count-model}
+set.seed(333)
+total_count_model <- fitdistr(thirty_degree_total_rna_count$count,"lognormal")
+
+simulate_total_rna_count <- tibble(gene_name = as.character(1:length(thirty_degree_total_rna_count$gene_name)), 
+                                   count = rlnorm(length(gene_name),
+                                                  meanlog = total_count_model$estimate[1], 
+                                                  sdlog = total_count_model$estimate[2]),
+                                   src = "sim")
+
+ggplot(thirty_degree_total_rna_count %>%
+         bind_rows(simulate_total_rna_count)) +
+  geom_histogram(aes(x = log(count),
+                   fill = src),
+               alpha = 0.7,
+               bins = 60,
+               position = "identity") +
+  theme_light() +
+  scale_y_continuous(expand = c(0,0)) +
+  labs(x = "ln(RNA count)", y = "", title = "Simulated vs Experimental Total RNA counts")
+
+
+```
+
+```{r simulated-frac-counts}
+set.seed(334)
+sup_pel_simulated_fractions <- tibble(sup_frac = c(rep(0.5, 100),
+                                                              rep(0.75,300),
+                                                              rep(0.25,100)),
+                                                 pel_frac = 1 - sup_frac)
+
+tot_sup_pel_scale_factor <- tibble(total = runif(1, min = 0.5, max = 3),
+                                   sup = runif(1, min = 0.5, max = 3),
+                                   pel = runif(1, min = 0.5, max = 3))
+
+total_sup_pel_simulated_mean_counts <- tibble(gene_name = 1:length(sup_pel_simulated_fractions$sup_frac),
+                                              total = rlnorm(length(gene_name),
+                                                  meanlog = total_count_model$estimate[1], 
+                                                  sdlog = total_count_model$estimate[2]),
+                                              sup = total * sup_pel_simulated_fractions$sup_frac,
+                                              pel = total * sup_pel_simulated_fractions$pel_frac)
+
+total_sup_pel_simulated_noisy_counts <- total_sup_pel_simulated_mean_counts %>%
+  mutate(total = tot_sup_pel_scale_factor$total * rnbinom(length(total),
+                                                          size = 20,
+                                                          mu  = total),
+         sup = tot_sup_pel_scale_factor$sup * rnbinom(length(total),
+                                                      size = 20,
+                                                      mu  = sup),
+         pel = tot_sup_pel_scale_factor$pel * rnbinom(length(total),
+                                                      size = 20,
+                                                      mu  = pel)) %>%
+  mutate(total = as.integer(total),
+         sup = as.integer(sup),
+         pel = as.integer(pel))
+```
