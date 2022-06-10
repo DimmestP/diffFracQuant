@@ -130,7 +130,7 @@ getmixingratiosTSP <- function(ctdata,iter=1000,
 
 ```
 
-```{r run-stan-model-on-sim-data}
+```{r run-stan-model-on-sim-data, eval=FALSE}
 
 # compile stan model, test it with 10 iterations, save output
 stan_count_model <- total_sup_pel_simulated_noisy_counts %>%
@@ -151,6 +151,6 @@ mixing_ratios_TSP <- total_sup_pel_simulated_noisy_counts %>%
 
 ```
 
-```{r output_results}
+```{r output_results, eval=FALSE}
 write_tsv(mixing_ratios_TSP, here("data/output/stan_model/mixing_ratios_TSP_latent.tsv"))
 ```
