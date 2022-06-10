@@ -11,3 +11,5 @@ Notes:
 - Model is now running on bifx. However, it is not converging and so cannot reliably sample from it. Need to triple check that I have defined all the parameters correctly. Could the gamma priors on the latent counts be too restrictive? Means need to cover several orders of magnitude. Do we need training data that has multiple replicates in order to have any chance of converging? Do we really need a scale factor for tot? It's colinear and pointless. As long as pel and sup are comparable it doesn't matter about tot.
 - Changed gamma priors to lognorm and no change. Need to better examine latent counts in both regimes. 
 - How do I set up the model to deal with replicates? Is tot count rep1 related to pel/sup rep1 or should I pair them with rep2/rep3 counts?
+- I ran to model only determining one scale factor (to avoid collinearity), but it didn't seem to have an effect.
+- I changes the simulated data and model so the I could input multiple replicates
