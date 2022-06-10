@@ -17,12 +17,20 @@ total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_cou
 
 ```{r mixingratiosTSP_stan}
 mdat_mixingTSP <- function(ctdata) {
+  # fix order of counts so grouped together by replicate
+  ctdata = ctdata %>%
+    arrange(rep)
+  
+  # define total rep and RNA
+  NRNA=length(unique(ctdata$gene_name))
+  NREP=length(unique(ctdata$rep))
+  
     ## make data for stan fit
-    head(ctdata)
-    list(NRNA=nrow(ctdata),
-         tot_obs=as.integer(round(ctdata$total)),
-         sup_obs=as.integer(round(ctdata$sup)),
-         pel_obs=as.integer(round(ctdata$pel))
+    list(NRNA=NRNA,
+         NREP=NREP,
+         tot_obs=array(as.integer(round(ctdata$total)), c(NRNA,NREP)),
+         sup_obs=array(as.integer(round(ctdata$sup)), c(NRNA,NREP)),
+         pel_obs=array(as.integer(round(ctdata$pel)), c(NRNA,NREP))
          )
     
 }
@@ -32,19 +40,22 @@ make_mixingTSP <- function(ctdata) {
     stan(model_code='// -*- mode: C -*-
 data {
   // Number of RNAs
-  int<lower=1> NRNA;     
+  int<lower=1> NRNA; 
+  
+  // Number of replicates
+  int<lower=1> NREP; 
   
   // Note: These are all integers
   // columns t, s, p
-  int<lower=0> tot_obs[NRNA];
-  int<lower=0> sup_obs[NRNA];
-  int<lower=0> pel_obs[NRNA];
+  int<lower=0> tot_obs[NRNA, NREP];
+  int<lower=0> sup_obs[NRNA, NREP];
+  int<lower=0> pel_obs[NRNA, NREP];
 }
 parameters {
   // Normalising factors
-  real<lower=0> tot_norm_factor;
-  real<lower=0> sup_norm_factor;
-  real<lower=0> pel_norm_factor;
+  real<lower=0> tot_norm_factor[NREP];
+  real<lower=0> sup_norm_factor[NREP];
+  real<lower=0> pel_norm_factor[NREP];
   
   // latent counts
   real<lower=0> sup_latent[NRNA];
@@ -78,16 +89,17 @@ model{
   // Cauchy prior for negbin dispersion parameter
   tot_phi ~ cauchy(0,3);
   
-  for(idx in 1:NRNA){ 
-    // fractions
-    sup_obs[idx] ~ poisson(sup_norm_factor * sup_latent[idx]);
-    pel_obs[idx] ~ poisson(pel_norm_factor * pel_latent[idx]);
+  for(rna in 1:NRNA){
+    for(rep in 1:NREP){ 
+      // fractions
+      sup_obs[rna,rep] ~ poisson(sup_norm_factor[rep] * sup_latent[rna]);
+      pel_obs[rna,rep] ~ poisson(pel_norm_factor[rep] * pel_latent[rna]);
   
-    // count distn negative binomial with specified means
-    // total
-    tot_obs[idx] ~ neg_binomial_2(tot_norm_factor * (sup_latent[idx] + pel_latent[idx]), tot_phi);
+      // count distn negative binomial with specified means
+      // total
+      tot_obs[rna,rep] ~ neg_binomial_2(tot_norm_factor[rep] * (sup_latent[rna] + pel_latent[rna]), tot_phi);
+    }
   }
-
 }
 generated quantities{
   // print("Mixing pars (sup,p100) = (", mixing_sup,",",mixing_p100,")");
@@ -131,6 +143,8 @@ getmixingratiosTSP <- function(ctdata,iter=1000,
 ```
 
 ```{r run-stan-model-on-sim-data, eval=FALSE}
+
+make_mixingTSP(total_sup_pel_simulated_noisy_counts)
 
 # compile stan model, test it with 10 iterations, save output
 stan_count_model <- total_sup_pel_simulated_noisy_counts %>%

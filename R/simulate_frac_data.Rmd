@@ -10,6 +10,10 @@ library(tidyverse)
 library(MASS)
 library(here)
 
+num_gene = 100
+num_rep = 3
+noisy_neg_bin_dispersion = 20
+
 knitr::opts_chunk$set(echo = FALSE)
 
 thirty_degree_total_rna_count <- read_tsv(here("./data/input/DAD-80.txt"),
@@ -45,9 +49,18 @@ ggplot(thirty_degree_total_rna_count %>%
 
 ```{r simulated-frac-counts}
 set.seed(334)
-sup_pel_simulated_fractions <- tibble(sup_frac = c(rep(0.5, 100),
-                                                              rep(0.75,300),
-                                                              rep(0.25,100)),
+sample_noisy_counts <- function(mean, dispersion, num_rep){
+  replicate(num_rep,
+            rnbinom(length(mean),
+                    size = dispersion,
+                    mu  = mean),
+            simplify = FALSE) %>%
+    unlist()
+}
+
+sup_pel_simulated_fractions <- tibble(sup_frac = c(rep(0.5, num_gene/4),
+                                                              rep(0.75,num_gene/2),
+                                                              rep(0.25,num_gene/4)),
                                                  pel_frac = 1 - sup_frac)
 
 tot_sup_pel_scale_factor <- tibble(total = runif(1, min = 0.5, max = 3),
@@ -61,19 +74,19 @@ total_sup_pel_simulated_mean_counts <- tibble(gene_name = 1:length(sup_pel_simul
                                               sup = total * sup_pel_simulated_fractions$sup_frac,
                                               pel = total * sup_pel_simulated_fractions$pel_frac)
 
-total_sup_pel_simulated_noisy_counts <- total_sup_pel_simulated_mean_counts %>%
-  mutate(total = tot_sup_pel_scale_factor$total * rnbinom(length(total),
-                                                          size = 20,
-                                                          mu  = total),
-         sup = tot_sup_pel_scale_factor$sup * rnbinom(length(total),
-                                                      size = 20,
-                                                      mu  = sup),
-         pel = tot_sup_pel_scale_factor$pel * rnbinom(length(total),
-                                                      size = 20,
-                                                      mu  = pel)) %>%
+total_sup_pel_simulated_noisy_counts <- tibble(gene_name = rep(total_sup_pel_simulated_mean_counts$gene_name,
+                                                               num_rep),
+                                               rep = rep(1:num_rep, each = num_gene),
+            total = tot_sup_pel_scale_factor$total *
+              sample_noisy_counts(total_sup_pel_simulated_mean_counts$total, 20, num_rep),
+            sup = tot_sup_pel_scale_factor$sup * 
+              sample_noisy_counts(total_sup_pel_simulated_mean_counts$sup, 20, num_rep),
+            pel = tot_sup_pel_scale_factor$pel * 
+              sample_noisy_counts(total_sup_pel_simulated_mean_counts$pel, 20, num_rep)) %>%
   mutate(total = as.integer(total),
          sup = as.integer(sup),
-         pel = as.integer(pel))
+         pel = as.integer(pel)) %>%
+  arrange(gene_name)
 ```
 
 ```{r output-sim-counts}
