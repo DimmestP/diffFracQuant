@@ -60,7 +60,7 @@ ggplot(thirty_degree_total_rna_count %>%
 ```
 
 ```{r simulated-frac-counts}
-set.seed(334)
+set.seed(338)
 sample_noisy_counts <- function(mean, dispersion, num_rep, rep_scale_factor){
   noisy_rep_counts <- replicate(num_rep,
             rnbinom(length(mean),
