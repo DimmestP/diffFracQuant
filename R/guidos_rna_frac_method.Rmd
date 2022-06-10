@@ -55,8 +55,7 @@ data {
 parameters {
   // Normalising factors
   real<lower=0> tot_norm_factor[NREP];
-  real<lower=0> sup_norm_factor[NREP];
-  real<lower=0> pel_norm_factor[NREP];
+  real<lower=0, upper=1> sup_norm_factor[NREP];
   
   // latent counts
   real<lower=0> sup_latent[NRNA];
@@ -73,9 +72,8 @@ parameters {
 }
 model{
   // normalising factors
-  tot_norm_factor ~ gamma(1,1);
-  sup_norm_factor ~ gamma(1,1);
-  pel_norm_factor ~ gamma(1,1);
+  tot_norm_factor ~ exponential(1);
+  sup_norm_factor ~ beta(1,1);
   
   // latent counts
   sup_gamma_alpha ~ normal(7,2);
@@ -84,17 +82,17 @@ model{
   sup_gamma_beta ~ gamma(1,1);
   pel_gamma_beta ~ gamma(1,1);
   
-  sup_latent ~ gamma(sup_gamma_alpha, sup_gamma_beta);
-  pel_latent ~ gamma(pel_gamma_alpha, pel_gamma_beta);
+  sup_latent ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
+  pel_latent ~ lognormal(pel_gamma_alpha, pel_gamma_beta);
   
   // Cauchy prior for negbin dispersion parameter
-  tot_phi ~ cauchy(0,3);
+  tot_phi ~ normal(2,1);
   
   for(rna in 1:NRNA){
     for(rep in 1:NREP){ 
       // fractions
       sup_obs[rna,rep] ~ poisson(sup_norm_factor[rep] * sup_latent[rna]);
-      pel_obs[rna,rep] ~ poisson(pel_norm_factor[rep] * pel_latent[rna]);
+      pel_obs[rna,rep] ~ poisson((1 -sup_norm_factor[rep]) * pel_latent[rna]);
   
       // count distn negative binomial with specified means
       // total
@@ -129,8 +127,7 @@ getmixingratiosTSP <- function(ctdata,iter=1000,
     list(
         norm_factors=stan_model %>% 
           spread_draws(tot_norm_factor[rep],
-                       sup_norm_factor[rep],
-                       pel_norm_factor[rep]) %>%
+                       sup_norm_factor[rep]) %>%
           summarise_draws(),
         latent_counts = stan_model %>% 
           spread_draws(sup_latent[gene_name],
