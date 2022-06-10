@@ -5,7 +5,7 @@ date: '2022-06-09'
 output: html_document
 ---
 
-```{r setup, include=false}
+```{r setup, include=FALSE}
 library(rstan)
 library(tidyverse)
 library(here)
@@ -66,8 +66,14 @@ model{
   pel_norm_factor ~ gamma(1,1);
   
   // latent counts
-  sup_latent ~ gamma(sup_gamma_alpha, sup_gamma_beta);
-  pel_latent ~ gamma(pel_gamma_alpha, pel_gamma_beta);
+  sup_gamma_alpha ~ normal(7,2);
+  pel_gamma_alpha ~ normal(7,2);
+  
+  sup_gamma_beta ~ gamma(1,1);
+  pel_gamma_beta ~ gamma(1,1);
+  
+  sup_latent ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
+  pel_latent ~ lognormal(pel_gamma_alpha, pel_gamma_beta);
   
   // Cauchy prior for negbin dispersion parameter
   tot_phi ~ cauchy(0,3);
@@ -106,17 +112,20 @@ getmixingratiosTSP <- function(ctdata,iter=1000,
     # head(ctdata) %>% print()
     stansummary <- fit_mixingTSP(ctdata=ctdata,iter=iter,control=control,...) %>%
         summary()
+    stansummary
     # return medians
-    data.frame(
-        tot_norm_factor=stansummary$summary["tot_norm_factor","50%"],
-        sup_norm_factor=stansummary$summary["sup_norm_factor","50%"],
-        pel_norm_factor=stansummary$summary["pel_norm_factor","50%"],
-        sup_gamma_alpha=stansummary$summary["sup_gamma_alpha","50%"],
-        sup_gamma_beta=stansummary$summary["sup_gamma_beta","50%"],
-        pel_gamma_alpha=stansummary$summary["pel_gamma_alpha","50%"],
-        pel_gamma_beta=stansummary$summary["pel_gamma_beta","50%"],
-        lp.n_eff  =stansummary$summary["lp__","n_eff"],
-        lp.Rhat   =stansummary$summary["lp__","Rhat"])
+    #list(
+      #  tot_norm_factor=stansummary$summary["tot_norm_factor","50%"],
+     #   sup_norm_factor=stansummary$summary["sup_norm_factor","50%"],
+       # pel_norm_factor=stansummary$summary["pel_norm_factor","50%"],
+      #  sup_gamma_alpha=stansummary$summary["sup_gamma_alpha","50%"],
+    #    sup_gamma_beta=stansummary$summary["sup_gamma_beta","50%"],
+     #   pel_gamma_alpha=stansummary$summary["pel_gamma_alpha","50%"],
+      #  pel_gamma_beta=stansummary$summary["pel_gamma_beta","50%"],
+#        pel_latent=stansummary$summary["pel_latent","50%"],
+ #       sup_latent=stansummary$summary["sup_latent","50%"],
+  #      lp.n_eff  =stansummary$summary["lp__","n_eff"],
+   #     lp.Rhat   =stansummary$summary["lp__","Rhat"])
 }
 
 ```
