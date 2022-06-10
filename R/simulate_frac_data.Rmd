@@ -49,13 +49,19 @@ ggplot(thirty_degree_total_rna_count %>%
 
 ```{r simulated-frac-counts}
 set.seed(334)
-sample_noisy_counts <- function(mean, dispersion, num_rep){
-  replicate(num_rep,
+sample_noisy_counts <- function(mean, dispersion, num_rep, rep_scale_factor){
+  noisy_rep_counts <- replicate(num_rep,
             rnbinom(length(mean),
                     size = dispersion,
                     mu  = mean),
             simplify = FALSE) %>%
     unlist()
+  
+  for(i in 1:num_rep){
+    noisy_rep_counts[(1 + length(mean) * (i - 1)) : (length(mean) * i)] <- noisy_rep_counts[(1 + length(mean) * (i - 1)) : (length(mean) * i)] * rep_scale_factor[i]
+  }
+  
+  noisy_rep_counts
 }
 
 sup_pel_simulated_fractions <- tibble(sup_frac = c(rep(0.5, num_gene/4),
@@ -63,9 +69,9 @@ sup_pel_simulated_fractions <- tibble(sup_frac = c(rep(0.5, num_gene/4),
                                                               rep(0.25,num_gene/4)),
                                                  pel_frac = 1 - sup_frac)
 
-tot_sup_pel_scale_factor <- tibble(total = runif(1, min = 0.5, max = 3),
-                                   sup = runif(1, min = 0.5, max = 3),
-                                   pel = runif(1, min = 0.5, max = 3))
+tot_sup_pel_scale_factor <- tibble(total = runif(num_rep, min = 0.5, max = 3),
+                                   sup = runif(num_rep, min = 0.5, max = 3),
+                                   pel = runif(num_rep, min = 0.5, max = 3))
 
 total_sup_pel_simulated_mean_counts <- tibble(gene_name = 1:length(sup_pel_simulated_fractions$sup_frac),
                                               total = rlnorm(length(gene_name),
@@ -78,11 +84,21 @@ total_sup_pel_simulated_noisy_counts <- tibble(gene_name = rep(total_sup_pel_sim
                                                                num_rep),
                                                rep = rep(1:num_rep, each = num_gene),
             total = tot_sup_pel_scale_factor$total *
-              sample_noisy_counts(total_sup_pel_simulated_mean_counts$total, 20, num_rep),
+              sample_noisy_counts(total_sup_pel_simulated_mean_counts$total,
+                                  20,
+                                  num_rep,
+                                  tot_sup_pel_scale_factor$total),
             sup = tot_sup_pel_scale_factor$sup * 
-              sample_noisy_counts(total_sup_pel_simulated_mean_counts$sup, 20, num_rep),
+              sample_noisy_counts(total_sup_pel_simulated_mean_counts$sup,
+                                  20,
+                                  num_rep,
+                                  
+                                  tot_sup_pel_scale_factor$sup),
             pel = tot_sup_pel_scale_factor$pel * 
-              sample_noisy_counts(total_sup_pel_simulated_mean_counts$pel, 20, num_rep)) %>%
+              sample_noisy_counts(total_sup_pel_simulated_mean_counts$pel,
+                                  20,
+                                  num_rep,
+                                  tot_sup_pel_scale_factor$pel)) %>%
   mutate(total = as.integer(total),
          sup = as.integer(sup),
          pel = as.integer(pel)) %>%
