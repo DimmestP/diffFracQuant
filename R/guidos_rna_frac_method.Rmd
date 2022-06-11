@@ -133,11 +133,12 @@ getmixingratiosTSP <- function(ctdata,iter=1000,
           spread_draws(sup_latent[gene_name],
                        pel_latent[gene_name]) %>%
           summarise_draws(),
-        gamma_prior = stan_model %>% 
+        dispersion_parameters = stan_model %>% 
           spread_draws(sup_gamma_alpha,
                        sup_gamma_beta,
                        pel_gamma_alpha,
-                       pel_gamma_beta) %>%
+                       pel_gamma_beta,
+                       tot_phi) %>%
           summarise_draws(),
         lp = stan_model %>% 
           spread_draws(lp__) %>%
