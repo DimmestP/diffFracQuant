@@ -54,49 +54,28 @@ data {
 }
 parameters {
   // Normalising factors
-  real<lower=0> tot_norm_factor[NREP];
-  real<lower=0, upper=1> sup_norm_factor[NREP];
   
   // latent counts
   real<lower=0> sup_latent[NRNA];
   real<lower=0> pel_latent[NRNA];
   
   // latent count gamma prior parameters
-  real<lower=0> sup_gamma_alpha;
   real<lower=0> sup_gamma_beta;
-  real<lower=0> pel_gamma_alpha;
   real<lower=0> pel_gamma_beta;
   
   // dispersion parameter for counts
-  real tot_phi;
+  real<lower=0> tot_phi;
 }
 model{
-  // normalising factors
-  tot_norm_factor ~ exponential(1);
-  sup_norm_factor ~ beta(1,1);
-  
-  // latent counts
-  sup_gamma_alpha ~ normal(7,2);
-  pel_gamma_alpha ~ normal(7,2);
-  
-  sup_gamma_beta ~ gamma(1,1);
-  pel_gamma_beta ~ gamma(1,1);
-  
-  sup_latent ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
-  pel_latent ~ lognormal(pel_gamma_alpha, pel_gamma_beta);
-  
-  // Cauchy prior for negbin dispersion parameter
-  tot_phi ~ normal(2,1);
-  
   for(rna in 1:NRNA){
     for(rep in 1:NREP){ 
       // fractions
-      sup_obs[rna,rep] ~ poisson(sup_norm_factor[rep] * sup_latent[rna]);
-      pel_obs[rna,rep] ~ poisson((1 -sup_norm_factor[rep]) * pel_latent[rna]);
+      sup_obs[rna,rep] ~ lognormal( sup_latent[rna], sup_gamma_beta);
+      pel_obs[rna,rep] ~ lognormal( pel_latent[rna], pel_gamma_beta);
   
       // count distn negative binomial with specified means
       // total
-      tot_obs[rna,rep] ~ neg_binomial_2(tot_norm_factor[rep] * (sup_latent[rna] + pel_latent[rna]), tot_phi);
+      tot_obs[rna,rep] ~ lognormal(sup_latent[rna] + pel_latent[rna], tot_phi);
     }
   }
 }
@@ -161,16 +140,24 @@ myseed = 39
 
 # run stan mixing ratio inference, reusing same model
 mixing_ratios_TSP <- total_sup_pel_simulated_noisy_counts %>%
-  filter(total > 5,
-         sup > 5,
-         pel > 5) %>%
     getmixingratiosTSP(, stan_mixing=stan_count_model,iter=500,seed=myseed)
 
 stan_count_model <- total_sup_pel_simulated_noisy_counts %>%
+  filter(total > 5,
+         sup > 5,
+         pel > 5) %>%
     make_mixingTSP()
 
 mixing_ratios_TSP <- total_sup_pel_simulated_noisy_counts %>%
     getmixingratiosTSP(, stan_mixing=stan_count_model,iter=50,seed=myseed)
+
+stan_count_model <- total_sup_pel_simulated_noisy_counts %>%
+  filter(total > 5,
+         sup > 5,
+         pel > 5) %>%
+    fit_mixingTSP(, stan_mixing=stan_count_model,iter=2000)
+
+launch_shinystan(stan_count_model)
 
 ```
 
