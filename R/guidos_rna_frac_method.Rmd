@@ -10,6 +10,7 @@ library(rstan)
 library(tidyverse)
 library(here)
 library(tidybayes)
+library(shinystan)
 
 options(mc.cores = parallel::detectCores())
 
@@ -60,6 +61,8 @@ parameters {
   real<lower=0> pel_latent[NRNA];
   
   // latent count gamma prior parameters
+  real<lower=0> sup_gamma_alpha;
+  real<lower=0> pel_gamma_alpha;
   real<lower=0> sup_gamma_beta;
   real<lower=0> pel_gamma_beta;
   
@@ -68,14 +71,19 @@ parameters {
 }
 model{
   for(rna in 1:NRNA){
-    for(rep in 1:NREP){ 
+   
+      // latent counts
+      sup_latent ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
+      pel_latent ~ lognormal(pel_gamma_alpha, pel_gamma_beta);
+  
+    for(rep in 1:NREP){
       // fractions
-      sup_obs[rna,rep] ~ lognormal( sup_latent[rna], sup_gamma_beta);
-      pel_obs[rna,rep] ~ lognormal( pel_latent[rna], pel_gamma_beta);
+      sup_obs[rna,rep] ~ neg_binomial_2( sup_latent[rna], tot_phi);
+      pel_obs[rna,rep] ~ neg_binomial_2( pel_latent[rna], tot_phi);
   
       // count distn negative binomial with specified means
       // total
-      tot_obs[rna,rep] ~ lognormal(sup_latent[rna] + pel_latent[rna], tot_phi);
+      tot_obs[rna,rep] ~ neg_binomial_2(sup_latent[rna] + pel_latent[rna], tot_phi);
     }
   }
 }
@@ -155,7 +163,7 @@ stan_count_model <- total_sup_pel_simulated_noisy_counts %>%
   filter(total > 5,
          sup > 5,
          pel > 5) %>%
-    fit_mixingTSP(, stan_mixing=stan_count_model,iter=2000)
+    fit_mixingTSP(, stan_mixing=stan_count_model,iter=500)
 
 launch_shinystan(stan_count_model)
 
