@@ -10,7 +10,6 @@ library(rstan)
 library(tidyverse)
 library(here)
 library(tidybayes)
-library(shinystan)
 
 options(mc.cores = parallel::detectCores())
 
@@ -165,7 +164,7 @@ stan_count_model <- total_sup_pel_simulated_noisy_counts %>%
          pel > 5) %>%
     fit_mixingTSP(, stan_mixing=stan_count_model,iter=500)
 
-launch_shinystan(stan_count_model)
+shinystan::launch_shinystan(stan_count_model)
 
 ```
 
