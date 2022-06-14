@@ -80,7 +80,7 @@ model{
   pel_gamma_alpha ~ normal(7,2);
   sup_gamma_beta ~ normal(2,1);
   pel_gamma_beta ~ normal(2,1);
-  tot_phi ~ normal(2, 1);
+  tot_phi ~ normal(100, 10);
    
   // latent counts
   sup_latent ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
@@ -161,6 +161,14 @@ test_diff_frac <- function(stan_model){
     transmute(sup_latent = sample(sup_latent),
               pel_latent = sample(pel_latent)) %>%
     summarise(p.value = sum(sup_latent > pel_latent) / length(sup_latent))
+}
+
+create_diff_fractionation_results <- function(stan_model){
+  extract_summary_statistics(stan_model)$latent_counts %>% 
+    select(gene_name, variable, median) %>% 
+    pivot_wider(names_from = variable, values_from="median") %>% 
+    mutate(ratio = sup_latent / pel_latent) %>% 
+    inner_join(test_diff_frac(stan_model))
 }
 
 ```
