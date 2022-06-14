@@ -73,9 +73,9 @@ parameters {
 }
 model{
 
-  total_scale_factor ~ normal(1,0.2);
-  pel_scale_factor ~ normal(1,0.2);
-  sup_scale_factor ~ normal(1,0.2);
+  total_scale_factor ~ normal(1.5,0.5);
+  pel_scale_factor ~ normal(1.5,0.5);
+  sup_scale_factor ~ normal(1.5,0.5);
   sup_gamma_alpha ~ normal(7,2);
   pel_gamma_alpha ~ normal(7,2);
   sup_gamma_beta ~ normal(2,1);
@@ -193,7 +193,7 @@ mixing_ratios_TSP <- total_sup_pel_simulated_noisy_counts %>%
     getmixingratiosTSP(, stan_mixing=stan_count_model,iter=50,seed=myseed)
 
 stan_count_model <- total_sup_pel_simulated_noisy_counts %>%
-    fit_mixingTSP(stan_mixing=stan_count_model,iter=100)
+    fit_mixingTSP(stan_mixing=stan_count_model,iter=1000)
 
 summary_stats <- extract_summary_statistics(stan_count_model)
 
