@@ -1,0 +1,45 @@
+---
+title: "frac_model_comparison"
+author: "Sam Haynes"
+date: '2022-06-14'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r function}
+calc_FPR_and_TPR <- function(p.value, foldchange, truth, threshold){
+  
+  TN_equal = sum(p.value[truth == "equal"] > threshold, na.rm = TRUE)
+  FP_equal = sum(truth == "equal" & !is.na(p.value)) - TN_equal
+  
+  TP_sup = sum(p.value[truth == "sup" & !is.na(foldchange) & foldchange > 0] < threshold, na.rm = TRUE)
+  FN_sup = sum(truth == "sup"& !is.na(p.value)) - TP_sup
+  
+  TP_pel = sum(p.value[truth == "pel" & !is.na(foldchange) & foldchange < 0] < threshold, na.rm = TRUE)
+  FN_pel = sum(truth == "pel"& !is.na(p.value)) - TP_pel
+  
+  tibble(threshold, true_positive = (TP_pel + TP_sup) / sum(truth != "equal"),
+         false_positive = FP_equal / sum(truth == "equal"))
+}
+
+calc_ROC_values <- function(p.value, foldchange, truth){
+  tibble(threshold = seq(0,1,0.05)) %>%
+    group_by(threshold) %>%
+    summarise(calc_FPR_and_TPR(p.value, foldchange, truth, threshold))
+}
+
+ggplot(calc_ROC_values(res$padj,
+                 res$log2FoldChange,
+                 c(rep("equal", 150),
+                   rep(c("sup", "pel"),
+                       each = 75)))) +
+  geom_line(aes(x = false_positive, y = true_positive)) +
+  scale_x_continuous(limits = c(0,1), expand = c(0,0.01)) +
+  scale_y_continuous(limits = c(0,1), expand = c(0,0)) +
+  theme_bw() +
+  geom_abline(slope = 1, intercept = 0)
+  
+```
