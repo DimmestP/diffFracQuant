@@ -54,35 +54,47 @@ data {
 }
 parameters {
   // Normalising factors
-  
+  real<lower=0> total_scale_factor[NREP];
+  real<lower=0> sup_scale_factor[NREP];
+  real<lower=0> pel_scale_factor[NREP];
+
   // latent counts
   real<lower=0> sup_latent[NRNA];
   real<lower=0> pel_latent[NRNA];
   
   // latent count gamma prior parameters
-  real<lower=0> sup_gamma_alpha;
   real<lower=0> pel_gamma_alpha;
-  real<lower=0> sup_gamma_beta;
   real<lower=0> pel_gamma_beta;
+  real<lower=0> sup_gamma_alpha;
+  real<lower=0> sup_gamma_beta;
   
   // dispersion parameter for counts
   real<lower=0> tot_phi;
 }
 model{
-  for(rna in 1:NRNA){
+
+  total_scale_factor ~ normal(1,0.2);
+  pel_scale_factor ~ normal(1,0.2);
+  sup_scale_factor ~ normal(1,0.2);
+  sup_gamma_alpha ~ normal(7,2);
+  pel_gamma_alpha ~ normal(7,2);
+  sup_gamma_beta ~ normal(2,1);
+  pel_gamma_beta ~ normal(2,1);
+  tot_phi ~ normal(2, 1);
    
-      // latent counts
-      sup_latent ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
-      pel_latent ~ lognormal(pel_gamma_alpha, pel_gamma_beta);
-  
+  // latent counts
+  sup_latent ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
+  pel_latent ~ lognormal(pel_gamma_alpha, pel_gamma_beta);
+      
+  for(rna in 1:NRNA){
     for(rep in 1:NREP){
       // fractions
-      sup_obs[rna,rep] ~ neg_binomial_2( sup_latent[rna], tot_phi);
-      pel_obs[rna,rep] ~ neg_binomial_2( pel_latent[rna], tot_phi);
+      sup_obs[rna,rep] ~ neg_binomial_2(sup_scale_factor[rep] * sup_latent[rna], tot_phi);
+      pel_obs[rna,rep] ~ neg_binomial_2(pel_scale_factor[rep] * pel_latent[rna], tot_phi);
   
       // count distn negative binomial with specified means
       // total
-      tot_obs[rna,rep] ~ neg_binomial_2(sup_latent[rna] + pel_latent[rna], tot_phi);
+      tot_obs[rna,rep] ~ neg_binomial_2(total_scale_factor[rep] * (sup_latent[rna] + pel_latent[rna]), tot_phi);
     }
   }
 }
@@ -104,20 +116,17 @@ fit_mixingTSP <- function(ctdata,stan_mixing=NULL,...) {
     return(stan_mixing_fit)
 }
 
-getmixingratiosTSP <- function(ctdata,iter=1000,
-                                control=list(adapt_delta=0.85),...) {
-    # head(ctdata) %>% print()
-    stan_model <- fit_mixingTSP(ctdata=ctdata,iter=iter,control=control,...)
-    
+extract_summary_statistics <- function(stan_model){
     # return medians
     list(
-        norm_factors=stan_model %>% 
-          spread_draws(tot_norm_factor[rep],
-                       sup_norm_factor[rep]) %>%
-          summarise_draws(),
         latent_counts = stan_model %>% 
           spread_draws(sup_latent[gene_name],
                        pel_latent[gene_name]) %>%
+          summarise_draws(),
+        scale_factors = stan_model %>% 
+          spread_draws(total_scale_factor[rep],
+                       pel_scale_factor[rep],
+                       sup_scale_factor[rep]) %>%
           summarise_draws(),
         dispersion_parameters = stan_model %>% 
           spread_draws(sup_gamma_alpha,
@@ -129,6 +138,29 @@ getmixingratiosTSP <- function(ctdata,iter=1000,
         lp = stan_model %>% 
           spread_draws(lp__) %>%
           summarise_draws())
+}
+
+getmixingratiosTSP <- function(ctdata,iter=1000,
+                                control=list(adapt_delta=0.85),...) {
+    # head(ctdata) %>% print()
+    stan_model <- fit_mixingTSP(ctdata=ctdata,iter=iter,control=control,...)
+    
+    extract_summary_statistics(stan_model)
+}
+
+test_diff_frac <- function(stan_model){
+  stan_model %>% 
+    spread_draws(sup_latent[gene_name]) %>%
+    inner_join(stan_count_model %>% 
+                 spread_draws(pel_latent[gene_name]),
+               by=c("gene_name",
+                    ".chain",
+                    ".iteration",
+                    ".draw")) %>%
+    group_by(gene_name) %>%
+    transmute(sup_latent = sample(sup_latent),
+              pel_latent = sample(pel_latent)) %>%
+    summarise(p.value = sum(sup_latent > pel_latent) / length(sup_latent))
 }
 
 ```
@@ -149,20 +181,19 @@ myseed = 39
 mixing_ratios_TSP <- total_sup_pel_simulated_noisy_counts %>%
     getmixingratiosTSP(, stan_mixing=stan_count_model,iter=500,seed=myseed)
 
-stan_count_model <- total_sup_pel_simulated_noisy_counts %>%
-  filter(total > 5,
-         sup > 5,
-         pel > 5) %>%
-    make_mixingTSP()
-
 mixing_ratios_TSP <- total_sup_pel_simulated_noisy_counts %>%
     getmixingratiosTSP(, stan_mixing=stan_count_model,iter=50,seed=myseed)
 
 stan_count_model <- total_sup_pel_simulated_noisy_counts %>%
-  filter(total > 5,
-         sup > 5,
-         pel > 5) %>%
-    fit_mixingTSP(, stan_mixing=stan_count_model,iter=500)
+    fit_mixingTSP(stan_mixing=stan_count_model,iter=100)
+
+summary_stats <- extract_summary_statistics(stan_count_model)
+
+compare_ratio <- summary_stats$latent_counts %>%
+  select(gene_name, variable, median) %>%
+  pivot_wider(names_from = variable, values_from = median) %>%
+  mutate(ratio = sup_latent / pel_latent) %>%
+  filter(ratio < 4)
 
 shinystan::launch_shinystan(stan_count_model)
 
