@@ -1,0 +1,44 @@
+---
+title: "DESeq2 RNA frac method"
+author: "Sam Haynes"
+date: '2022-06-14'
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+library(here)
+library(DESeq2)
+library(tidyverse)
+
+total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_counts.tsv"))
+```
+
+```{r run-DESeq}
+fractionation_count_matrix <- total_sup_pel_simulated_noisy_counts %>%
+  pivot_wider(names_from = "rep",
+              values_from = c("total", "sup", "pel")) %>%
+  column_to_rownames("gene_name") %>%
+  as.matrix()
+
+column_data <- data.frame(fraction = factor(rep(c("total", "sup", "pel"), 
+                                         each = 3)), 
+                          type = "single_read")
+
+rownames(column_data) <- colnames(fractionation_count_matrix)
+
+DESeq2_data_set <- DESeqDataSetFromMatrix(countData = fractionation_count_matrix, 
+                                          colData = column_data,
+                                          design = ~fraction)
+
+DESeq2_data_set <- DESeq(DESeq2_data_set)
+
+res <- results(DESeq2_data_set, contrast = c("fraction", "sup", "pel"))
+
+significant_diff_expression <- as.tibble(res, rownames = "gene_name") %>% 
+  filter(padj < 0.05, !is.na(pvalue))
+  
+```
+
+```{r save-result, eval=FALSE}
+write_tsv(as.tibble(res, rownames = "gene_name"), here("./data/output/diff_frac_models/DESeq2_only_counts.tsv"))
+```
