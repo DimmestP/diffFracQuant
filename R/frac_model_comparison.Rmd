@@ -69,37 +69,13 @@ calc_ROC_values <- function(p.value, foldchange, truth, latent = FALSE){
   
 ```
 
-```{r ROC-curve}
-ground_truth = c(rep("equal", 150),
-                 rep(c("sup", "pel"), each = 75))
-
-latent_model_ROC_data <- calc_ROC_values(latent_model_results$p.value,
-                                        latent_model_results$ratio,
-                                        ground_truth,
-                                        latent = TRUE) %>%
-  mutate(model = "latent")
-
-DESeq_model_ROC_data <- calc_ROC_values(DESeq_model_results$padj,
-                                        DESeq_model_results$log2FoldChange,
-                                        ground_truth) %>%
-  mutate(model = "DESeq")
-
-ggplot(DESeq_model_ROC_data %>%
-         bind_rows(latent_model_ROC_data)) +
-  geom_line(aes(x = false_positive, y = true_positive, colour = model)) +
-  scale_x_continuous(limits = c(0,1), expand = c(0,0.01)) +
-  scale_y_continuous(limits = c(0,1), expand = c(0,0)) +
-  theme_bw() +
-  geom_abline(slope = 1, intercept = 0)
-```
-
 ```{r comapare-models}
 detect_diff_exp_DESeq <- DESeq_model_results %>%
-  select(gene_name, log2FoldChange, pvalue) %>%
+  dplyr::select(gene_name, log2FoldChange, pvalue) %>%
   filter(pvalue < 0.05)
 
 detect_diff_exp_latent <- latent_model_results %>%
-  select(gene_name, ratio, p.value) %>%
+  dplyr::select(gene_name, ratio, p.value) %>%
   filter(p.value < 0.025 | p.value > 0.975) %>%
   transmute(gene_name, log2FoldChange = log2(ratio), pvalue = p.value)
 
