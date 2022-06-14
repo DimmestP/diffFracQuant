@@ -80,7 +80,7 @@ model{
   pel_gamma_alpha ~ normal(7,2);
   sup_gamma_beta ~ normal(2,1);
   pel_gamma_beta ~ normal(2,1);
-  tot_phi ~ normal(100, 5);
+  tot_phi ~ normal(100, 1);
    
   // latent counts
   sup_latent ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
