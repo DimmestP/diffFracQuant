@@ -13,6 +13,11 @@ latent_model_results <- read_tsv(here("data/output/diff_frac_models/latent_model
 
 
 DESeq_model_results <- read_tsv(here("data/output/diff_frac_models/DESeq2_only_counts.tsv"))
+
+latent_model_results_skewed <- read_tsv(here("data/output/diff_frac_models/latent_model_skewed_count.tsv"))
+
+
+DESeq_model_results_skewed <- read_tsv(here("data/output/diff_frac_models/DESeq2_only_skewed_counts.tsv"))
 ```
 
 ```{r function}
@@ -69,12 +74,21 @@ calc_ROC_values <- function(p.value, foldchange, truth, latent = FALSE){
   
 ```
 
-```{r comapare-models}
+```{r compare-models}
 detect_diff_exp_DESeq <- DESeq_model_results %>%
   dplyr::select(gene_name, log2FoldChange, pvalue) %>%
   filter(pvalue < 0.05)
 
 detect_diff_exp_latent <- latent_model_results %>%
+  dplyr::select(gene_name, ratio, p.value) %>%
+  filter(p.value < 0.025 | p.value > 0.975) %>%
+  transmute(gene_name, log2FoldChange = log2(ratio), pvalue = p.value)
+
+detect_diff_exp_DESeq_skewed <- DESeq_model_results_skewed %>%
+  dplyr::select(gene_name, log2FoldChange, pvalue) %>%
+  filter(pvalue < 0.05)
+
+detect_diff_exp_latent_skewed <- latent_model_results_skewed %>%
   dplyr::select(gene_name, ratio, p.value) %>%
   filter(p.value < 0.025 | p.value > 0.975) %>%
   transmute(gene_name, log2FoldChange = log2(ratio), pvalue = p.value)
@@ -88,8 +102,16 @@ summary <- tibble(TP_DESeq = sum(((detect_diff_exp_DESeq$gene_name > 150 &
                   TP_latent = sum((detect_diff_exp_latent$gene_name > 150 &
                                      detect_diff_exp_latent$gene_name <= 225) |
                                    (detect_diff_exp_latent$gene_name > 225)),
-                  FP_latent = length(detect_diff_exp_latent$gene_name) - TP_latent)
+                  FP_latent = length(detect_diff_exp_latent$gene_name) - TP_latent,
+                  TP_DESeq_skewed = sum(((detect_diff_exp_DESeq_skewed$gene_name <= 280 &
+                                     detect_diff_exp_DESeq_skewed$log2FoldChange > 0)) |
+                                   (detect_diff_exp_DESeq_skewed$gene_name > 280 &
+                                      detect_diff_exp_DESeq_skewed$log2FoldChange < 0)),
+                  FP_DESeq_skewed = length(detect_diff_exp_DESeq_skewed$gene_name) - TP_DESeq_skewed,
+                  TP_latent_skewed = sum((detect_diff_exp_latent_skewed$gene_name <= 280) |
+                                   (detect_diff_exp_latent_skewed$gene_name > 280)),
+                  FP_latent_skewed = length(detect_diff_exp_latent_skewed$gene_name) - TP_latent_skewed)
                   
 
-summary
+View(summary)
 ```
