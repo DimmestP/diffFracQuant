@@ -13,7 +13,7 @@ library(tidybayes)
 
 options(mc.cores = parallel::detectCores())
 
-total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_counts.tsv"))
+total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_skewed_multi_condition_counts.tsv"))
 ```
 
 ```{r mixingratiosTSP_stan}
