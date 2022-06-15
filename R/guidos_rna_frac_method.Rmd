@@ -47,7 +47,7 @@ data {
   int<lower=1> NREP; 
   
   // Number of conditions
-  int<lower=1> NCON
+  int<lower=1> NCON;
   
   // Note: These are all integers
   // columns t, s, p
@@ -76,24 +76,24 @@ parameters {
 }
 model{
 
-  total_scale_factor ~ normal(1.5,0.5);
-  pel_scale_factor ~ normal(1.5,0.5);
-  sup_scale_factor ~ normal(1.5,0.5);
-  sup_gamma_alpha ~ normal(7,2);
-  pel_gamma_alpha ~ normal(7,2);
-  sup_gamma_beta ~ normal(2,1);
-  pel_gamma_beta ~ normal(2,1);
-  phi ~ normal(100, 1);
+  for(con in 1:NCON){
+    total_scale_factor ~ normal(1.5,0.5);
+    pel_scale_factor ~ normal(1.5,0.5);
+    sup_scale_factor ~ normal(1.5,0.5);
+    sup_gamma_alpha ~ normal(7,2);
+    pel_gamma_alpha ~ normal(7,2);
+    sup_gamma_beta ~ normal(2,1);
+    pel_gamma_beta ~ normal(2,1);
+    phi ~ normal(100, 1);
    
-  // latent counts
-  sup_latent ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
-  pel_latent ~ lognormal(pel_gamma_alpha, pel_gamma_beta);
+    // latent counts
+    sup_latent ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
+    pel_latent ~ lognormal(pel_gamma_alpha, pel_gamma_beta);
       
-  for(rna in 1:NRNA){
-    for(rep in 1:NREP){
-      for(con in 1:NCON){
-        // fractions
-        sup_obs[rna, rep, con] ~ neg_binomial_2(sup_scale_factor[rep, con] *
+    for(rna in 1:NRNA){
+      for(rep in 1:NREP){
+          // fractions
+          sup_obs[rna, rep, con] ~ neg_binomial_2(sup_scale_factor[rep, con] *
                                                   sup_latent[rna, con],
                                                 phi);
                                               
