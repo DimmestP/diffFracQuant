@@ -20,18 +20,20 @@ total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_cou
 mdat_mixingTSP <- function(ctdata) {
   # fix order of counts so grouped together by replicate
   ctdata = ctdata %>%
-    arrange(rep)
+    arrange(condition, rep)
   
   # define total rep and RNA
   NRNA=length(unique(ctdata$gene_name))
   NREP=length(unique(ctdata$rep))
+  NCON=length(unique(ctdata$rep))
   
     ## make data for stan fit
     list(NRNA=NRNA,
          NREP=NREP,
-         tot_obs=array(as.integer(round(ctdata$total)), c(NRNA,NREP)),
-         sup_obs=array(as.integer(round(ctdata$sup)), c(NRNA,NREP)),
-         pel_obs=array(as.integer(round(ctdata$pel)), c(NRNA,NREP))
+         NCON=NCON,
+         tot_obs=array(as.integer(round(ctdata$total)), c(NRNA,NREP,NCON)),
+         sup_obs=array(as.integer(round(ctdata$sup)), c(NRNA,NREP,NCON)),
+         pel_obs=array(as.integer(round(ctdata$pel)), c(NRNA,NREP,NCON))
          )
     
 }
@@ -75,20 +77,20 @@ parameters {
   real<lower=0> phi;
 }
 model{
+  sup_gamma_alpha ~ normal(7,2);
+  pel_gamma_alpha ~ normal(7,2);
+  sup_gamma_beta ~ normal(2,1);
+  pel_gamma_beta ~ normal(2,1);
+  phi ~ normal(100, 1);
 
   for(con in 1:NCON){
-    total_scale_factor ~ normal(1.5,0.5);
-    pel_scale_factor ~ normal(1.5,0.5);
-    sup_scale_factor ~ normal(1.5,0.5);
-    sup_gamma_alpha ~ normal(7,2);
-    pel_gamma_alpha ~ normal(7,2);
-    sup_gamma_beta ~ normal(2,1);
-    pel_gamma_beta ~ normal(2,1);
-    phi ~ normal(100, 1);
+    total_scale_factor[, con] ~ normal(1.5,0.5);
+    pel_scale_factor[, con] ~ normal(1.5,0.5);
+    sup_scale_factor[, con] ~ normal(1.5,0.5);
    
     // latent counts
-    sup_latent ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
-    pel_latent ~ lognormal(pel_gamma_alpha, pel_gamma_beta);
+    sup_latent[, con] ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
+    pel_latent[, con] ~ lognormal(pel_gamma_alpha, pel_gamma_beta);
       
     for(rna in 1:NRNA){
       for(rep in 1:NREP){
