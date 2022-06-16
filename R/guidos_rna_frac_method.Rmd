@@ -128,13 +128,13 @@ extract_summary_statistics <- function(stan_model){
     # return medians
     list(
         latent_counts = stan_model %>% 
-          spread_draws(sup_latent[gene_name],
-                       pel_latent[gene_name]) %>%
+          spread_draws(sup_latent[gene_name, condition],
+                       pel_latent[gene_name, condition]) %>%
           summarise_draws(),
         scale_factors = stan_model %>% 
-          spread_draws(total_scale_factor[rep],
-                       pel_scale_factor[rep],
-                       sup_scale_factor[rep]) %>%
+          spread_draws(total_scale_factor[rep, condition],
+                       pel_scale_factor[rep, condition],
+                       sup_scale_factor[rep, condition]) %>%
           summarise_draws(),
         dispersion_parameters = stan_model %>% 
           spread_draws(sup_gamma_alpha,
