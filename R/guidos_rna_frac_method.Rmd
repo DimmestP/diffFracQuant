@@ -162,7 +162,7 @@ test_diff_frac <- function(stan_model){
     inner_join(stan_count_model %>% 
                  spread_draws(pel_latent[gene_name, condition]),
                by=c("gene_name",
-                    "condtion",
+                    "condition",
                     ".chain",
                     ".iteration",
                     ".draw")) %>%
