@@ -158,14 +158,15 @@ getmixingratiosTSP <- function(ctdata,iter=1000,
 
 test_diff_frac <- function(stan_model){
   stan_model %>% 
-    spread_draws(sup_latent[gene_name]) %>%
+    spread_draws(sup_latent[gene_name, condition]) %>%
     inner_join(stan_count_model %>% 
-                 spread_draws(pel_latent[gene_name]),
+                 spread_draws(pel_latent[gene_name, condition]),
                by=c("gene_name",
+                    "condtion",
                     ".chain",
                     ".iteration",
                     ".draw")) %>%
-    group_by(gene_name) %>%
+    group_by(gene_name, condition) %>%
     transmute(sup_latent = sample(sup_latent),
               pel_latent = sample(pel_latent)) %>%
     summarise(p.value = sum( pel_latent / sup_latent > 1) / length(sup_latent))
