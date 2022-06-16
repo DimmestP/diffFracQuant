@@ -169,7 +169,41 @@ test_diff_frac <- function(stan_model){
     group_by(gene_name, condition) %>%
     transmute(sup_latent = sample(sup_latent),
               pel_latent = sample(pel_latent)) %>%
-    summarise(p.value = sum( pel_latent / sup_latent > 1) / length(sup_latent))
+    summarise(p.value = sum( pel_latent / sup_latent > 1) / length(sup_latent), .groups = "drop")
+}
+
+test_frac_across_condition <- function(condition, count){
+  unique_permutations <- tibble(condition_A = unique(condition), condition_B = unique(condition)) %>% 
+    expand(condition_A, condition_B) %>% 
+    filter(condition_A > condition_B)
+  
+  unique_permutations %>%
+    dplyr::select(condition_A) %>%
+    inner_join(tibble(condition_A = condition, count_A = count), by = "condition_A") %>%
+    bind_cols(unique_permutations %>%
+                dplyr::select(condition_B) %>%
+                inner_join(tibble(condition_B = condition, count_B = count), by = "condition_B")) %>%
+    group_by(condition_A, condition_B) %>%
+    summarise(p.value = sum(count_A > count_B) / (length(count)/ length(unique(condition))), .groups = "drop")
+}
+
+test_diff_condition <- function(stan_model){
+  stan_model %>% 
+    spread_draws(sup_latent[gene_name, condition]) %>%
+    inner_join(stan_count_model %>% 
+                 spread_draws(pel_latent[gene_name, condition]),
+               by=c("gene_name",
+                    "condition",
+                    ".chain",
+                    ".iteration",
+                    ".draw")) %>%
+    group_by(gene_name, condition) %>%
+    transmute(sup_latent = sample(sup_latent),
+              pel_latent = sample(pel_latent)) %>%
+    ungroup() %>%
+    pivot_longer(c("sup_latent", "pel_latent"), names_to = "fraction", values_to = "counts") %>%
+    group_by(gene_name, fraction) %>%
+    summarise(test_frac_across_condition(condition, counts), .groups = "drop")
 }
 
 create_diff_fractionation_results <- function(stan_model){

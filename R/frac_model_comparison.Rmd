@@ -16,6 +16,9 @@ DESeq_model_results <- read_tsv(here("data/output/diff_frac_models/DESeq2_only_c
 
 latent_model_results_skewed <- read_tsv(here("data/output/diff_frac_models/latent_model_skewed_count.tsv"))
 
+latent_model_results_skewed_multi_condition <-  read_tsv(here("data/output/diff_frac_models/latent_model_skewed_multi_condition_count.tsv"))
+
+simulate_skewed_multi_condition_fractions <-  read_tsv(here("data/output/simulated_counts/sup_pel_simulated_fractions.tsv")) 
 
 DESeq_model_results_skewed <- read_tsv(here("data/output/diff_frac_models/DESeq2_only_skewed_counts.tsv"))
 ```
@@ -74,7 +77,7 @@ calc_ROC_values <- function(p.value, foldchange, truth, latent = FALSE){
   
 ```
 
-```{r compare-models}
+```{r compare-models-single-condition}
 detect_diff_exp_DESeq <- DESeq_model_results %>%
   dplyr::select(gene_name, log2FoldChange, pvalue) %>%
   filter(pvalue < 0.05)
@@ -114,4 +117,37 @@ summary <- tibble(TP_DESeq = sum(((detect_diff_exp_DESeq$gene_name > 150 &
                   
 
 View(summary)
+```
+
+```{r compare-models-multi-condition}
+ simulated_groundtruth <- simulate_skewed_multi_condition_fractions %>%
+  transmute(gene_name,
+            condition,
+            true_sup_frac = sup_frac > 0.55,
+            true_pel_frac = pel_frac > 0.55)
+
+model_pred_with_ground_truth_multi_condtion <-  latent_model_results_skewed_multi_condition %>%
+  mutate(pel_frac = p.value > 0.975,
+         sup_frac = p.value < 0.025) %>%
+  inner_join(simulated_groundtruth)
+
+FP_pel <- model_pred_with_ground_truth_multi_condtion %>%
+  filter(pel_frac & !true_pel_frac) %>%
+  pull(gene_name) %>%
+  length()
+
+TP_pel <- model_pred_with_ground_truth_multi_condtion %>%
+  filter(pel_frac & true_pel_frac) %>%
+  pull(gene_name) %>%
+  length()
+
+FP_sup <- model_pred_with_ground_truth_multi_condtion %>%
+  filter(sup_frac & !true_sup_frac) %>%
+  pull(gene_name) %>%
+  length()
+
+TP_sup <- model_pred_with_ground_truth_multi_condtion %>%
+  filter(sup_frac & true_sup_frac) %>%
+  pull(gene_name) %>%
+  length()
 ```
