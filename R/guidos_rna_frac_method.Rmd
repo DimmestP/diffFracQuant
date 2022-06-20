@@ -172,6 +172,12 @@ test_frac_across_condition <- function(condition, ratio){
 }
 
 test_diff_condition <- function(stan_model){
+  summary_stats_ratio <- extract_summary_statistics(stan_model)$latent_counts %>% 
+    select(gene_name, condition, variable, median) %>% 
+    group_by(gene_name, condition) %>% 
+    summarise(ratio = median[1]/median[2])
+  
+  
   stan_model %>% 
     spread_draws(sup_latent[gene_name, condition]) %>%
     inner_join(stan_count_model %>% 
@@ -187,7 +193,11 @@ test_diff_condition <- function(stan_model){
               sup_pel_ratio = sup_latent / pel_latent) %>%
     ungroup() %>%
     group_by(gene_name) %>%
-    summarise(test_frac_across_condition(condition, ratio), .groups = "drop")
+    summarise(test_frac_across_condition(condition, sup_pel_ratio), .groups = "drop")  %>% 
+    inner_join(summary_stats_ratio, by = c("gene_name"="gene_name", "condition_A" = "condition")) %>%
+    rename(ratio_A = ratio) %>%
+    inner_join(summary_stats_ratio, by = c("gene_name"="gene_name", "condition_B" = "condition")) %>%
+    rename(ratio_B = ratio)
 }
 
 ```
@@ -212,7 +222,7 @@ mixing_ratios_TSP <- total_sup_pel_simulated_noisy_counts %>%
     getmixingratiosTSP(, stan_mixing=stan_count_model,iter=50,seed=myseed)
 
 stan_count_model <- total_sup_pel_simulated_noisy_counts %>%
-    fit_mixingTSP(stan_mixing=stan_count_model, iter=1000)
+    fit_mixingTSP(stan_mixing=stan_count_model, iter=100)
 
 summary_stats <- extract_summary_statistics(stan_count_model)
 
