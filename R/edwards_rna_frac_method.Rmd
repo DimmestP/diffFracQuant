@@ -7,21 +7,29 @@ output: html_document
 
 ```{r setup, include=false}
 library(rstan)
+library(DESeq2)
 library(tidyverse)
 library(here)
+library(tidybayes)
 
-total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_counts.tsv"))
+total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_skewed_multi_condition_counts.tsv"))
 ```
 
 ```{r mixingratiosTSP_stan}
 
 mdat_mixingTSP <- function(ctdata) {
+  ctdata = ctdata %>% arrange(gene_name, rep, condition)
+  NRNA=length(unique(ctdata$gene_name))
+  NREP=length(unique(ctdata$rep))
+  NCON=length(unique(ctdata$condition))
     ## make data for stan fit
     head(ctdata)
-    list(NRNA=nrow(ctdata),
-         tot_obs=as.integer(round(ctdata$total)),
-         sup_obs=as.integer(round(ctdata$sup)),
-         p100_obs=as.integer(round(ctdata$pel))
+    list(NRNA=NRNA,
+         NREP=NREP,
+         NCON=NCON,
+         tot_obs=array(as.integer(round(ctdata$total)), c(NRNA, NREP, NCON)),
+         sup_obs=array(as.integer(round(ctdata$sup)), c(NRNA, NREP, NCON)),
+         p100_obs=array(as.integer(round(ctdata$pel)), c(NRNA, NREP, NCON))
          )
     
 }
@@ -31,36 +39,46 @@ make_mixingTSP <- function(ctdata) {
     stan(model_code='// -*- mode: C -*-
 data {
   // Number of RNAs
-  int<lower=1> NRNA;     
+  int<lower=1> NRNA;
+  
+  // Number of replicates
+  int<lower=1> NREP;
+  
+  // Number of conditions
+  int<lower=1> NCON;
   
   // Note: These are all integers
   // columns t, s, p
-  int<lower=0> tot_obs[NRNA];
-  int<lower=0> sup_obs[NRNA];
-  int<lower=0> p100_obs[NRNA];
+  int<lower=0> tot_obs[NRNA, NREP, NCON];
+  int<lower=0> sup_obs[NRNA, NREP, NCON];
+  int<lower=0> p100_obs[NRNA, NREP, NCON];
 }
 parameters {
   // Unnormalized mixing proportions
-  // real<lower=0> mixing_t;
-  real<lower=0> mixing_sup;
-  real<lower=0> mixing_p100;
+  // real<lower=0> mixing_t[NREP, NCON];
+  real<lower=0> mixing_sup[NREP, NCON];
+  real<lower=0> mixing_p100[NREP, NCON];
   
   // dispersion parameter for counts
   real phi;
 }
 model{
-  // mixing ratios
-  mixing_sup ~ gamma(1,1);
-  mixing_p100 ~ gamma(1,1);
   // Cauchy prior for negbin dispersion parameter
   phi ~ cauchy(0,3);
+    
+  for(con in 1:NCON){
+    // mixing ratios
+    mixing_sup[, con] ~ gamma(1,1);
+    mixing_p100[, con] ~ gamma(1,1);
   
-  for(idx in 1:NRNA){ 
-    // count distn negative binomial with specified means
-    // Total
-    tot_obs[idx] ~ neg_binomial_2(mixing_sup * sup_obs[idx] + mixing_p100 * p100_obs[idx], phi);
+    for(rna in 1:NRNA){ 
+      for(rep in 1:NREP){
+        // count distn negative binomial with specified means
+        // Total
+        tot_obs[rna, rep, con] ~ neg_binomial_2(mixing_sup[rep, con] * sup_obs[rna, rep, con] + mixing_p100[rep, con] * p100_obs[rna, rep, con], phi);
+      }
+    }
   }
-
 }
 generated quantities{
   // print("Mixing pars (sup,p100) = (", mixing_sup,",",mixing_p100,")");
@@ -83,14 +101,20 @@ fit_mixingTSP <- function(ctdata,stan_mixing=NULL,...) {
 getmixingratiosTSP <- function(ctdata,iter=1000,
                                 control=list(adapt_delta=0.85),...) {
     # head(ctdata) %>% print()
-    stansummary <- fit_mixingTSP(ctdata=ctdata,iter=iter,control=control,...) %>%
-        summary()
+    stan_model <- fit_mixingTSP(ctdata=ctdata,iter=iter,control=control,...)
+    
     # return medians
-    data.frame(
-        mixing.Sup=stansummary$summary["mixing_sup","50%"],
-        mixing.P100=stansummary$summary["mixing_p100","50%"],
-        lp.n_eff  =stansummary$summary["lp__","n_eff"],
-        lp.Rhat   =stansummary$summary["lp__","Rhat"])
+    list(
+      mixing_factors = stan_model %>% 
+          spread_draws(mixing_p100[rep, condition],
+                       mixing_sup[rep, condition]) %>%
+          summarise_draws(),
+      phi = stan_model %>% 
+          spread_draws(phi) %>%
+          summarise_draws(),
+      lp = stan_model %>% 
+          spread_draws(lp__) %>%
+          summarise_draws())
 }
 
 ```
@@ -112,11 +136,11 @@ mixing_ratios_TSP <- total_sup_pel_simulated_noisy_counts %>%
   filter(total > 5,
          sup > 5,
          pel > 5) %>%
-    getmixingratiosTSP(, stan_mixing=stan_count_model,iter=1000,seed=myseed)
+    getmixingratiosTSP(stan_mixing=stan_count_model,iter=1000,seed=myseed)
 
 ```
 
-```{r calc-fractions}
+```{r calc-fractions, eval=FALSE}
 total_sup_pel_sim_model_frac <- total_sup_pel_simulated_noisy_counts %>%
   mutate(sup = sup * mixing_ratios_TSP$mixing.Sup,
          pel = pel * mixing_ratios_TSP$mixing.P100,
@@ -136,6 +160,86 @@ ggplot(total_sup_pel_sim_model_frac %>%
 
 ```
 
+```{r run-DESeq2-with-scale-factors}
+fractionation_count_matrix_sup <- total_sup_pel_simulated_noisy_counts %>%
+  dplyr::select(-total, -pel) %>%
+  pivot_wider(names_from = c("rep", "condition"),
+              values_from = c("sup")) %>%
+  column_to_rownames("gene_name") %>%
+  as.matrix()
+
+column_data_sup <- data.frame(fraction = factor(rep("sup",each = 9)),
+                          condition = factor(rep(1:3,3)))
+
+rownames(column_data_sup) <- colnames(fractionation_count_matrix_sup)
+
+DESeq2_data_set_sup <- DESeqDataSetFromMatrix(countData = fractionation_count_matrix_sup, 
+                                          colData = column_data_sup,
+                                          design = ~condition)
+
+sizeFactors(DESeq2_data_set_sup) <- mixing_ratios_TSP$mixing_factors %>% 
+  dplyr::select(rep, condition, variable, median) %>% 
+  mutate(variable = str_remove(variable, "mixing_"), variable = str_replace(variable, "p100", "pel")) %>% 
+  filter(variable == "sup") %>%
+  dplyr::select(-variable) %>%
+  pivot_wider(names_from = c("rep", "condition"), values_from = "median") %>%
+  as_vector()
+
+DESeq2_data_set_sup <- DESeq(DESeq2_data_set_sup)
+
+fractionation_count_matrix_pel <- total_sup_pel_simulated_noisy_counts %>%
+  dplyr::select(-total, -sup) %>%
+  pivot_wider(names_from = c("rep", "condition"),
+              values_from = c("pel")) %>%
+  column_to_rownames("gene_name") %>%
+  as.matrix()
+
+column_data_pel <- data.frame(fraction = factor(rep("pel",each = 9)),
+                          condition = factor(rep(1:3,3)))
+
+rownames(column_data_pel) <- colnames(fractionation_count_matrix_pel)
+
+DESeq2_data_set_pel <- DESeqDataSetFromMatrix(countData = fractionation_count_matrix_pel, 
+                                          colData = column_data_pel,
+                                          design = ~condition)
+
+sizeFactors(DESeq2_data_set_pel) <- mixing_ratios_TSP$mixing_factors %>% 
+  dplyr::select(rep, condition, variable, median) %>% 
+  mutate(variable = str_remove(variable, "mixing_"), variable = str_replace(variable, "p100", "pel")) %>% 
+  filter(variable == "pel") %>%
+  dplyr::select(-variable) %>%
+  pivot_wider(names_from = c("rep", "condition"), values_from = "median") %>%
+  as_vector()
+
+DESeq2_data_set_pel <- DESeq(DESeq2_data_set_pel)
+
+DESeq2_with_edward_model_results <- results(DESeq2_data_set_sup, c("condition", "3", "1")) %>%
+  as.tibble(rownames = "gene_name") %>%
+  dplyr::select(gene_name, baseMean, log2FoldChange, pvalue) %>%
+  mutate("condition_A" = 3, "condition_B" = 1, fraction = "sup") %>%
+  bind_rows(results(DESeq2_data_set_sup, c("condition", "3", "2")) %>%
+              as.tibble(rownames = "gene_name") %>%
+              dplyr::select(gene_name, baseMean, log2FoldChange, pvalue) %>%
+              mutate("condition_A" = 3, "condition_B" = 2, fraction = "sup")) %>%
+  bind_rows(results(DESeq2_data_set_sup, c("condition", "2", "1")) %>%
+              as.tibble(rownames = "gene_name") %>%
+              dplyr::select(gene_name, baseMean, log2FoldChange, pvalue) %>%
+              mutate("condition_A" = 2, "condition_B" = 1, fraction = "sup"))%>%
+  bind_rows(results(DESeq2_data_set_pel, c("condition", "3", "1")) %>%
+              as.tibble(rownames = "gene_name") %>%
+              dplyr::select(gene_name, baseMean, log2FoldChange, pvalue) %>%
+              mutate("condition_A" = 3, "condition_B" = 1, fraction = "pel")) %>%
+  bind_rows(results(DESeq2_data_set_pel, c("condition", "2", "1")) %>%
+              as.tibble(rownames = "gene_name") %>%
+              dplyr::select(gene_name, baseMean, log2FoldChange, pvalue) %>%
+              mutate("condition_A" = 2, "condition_B" = 1, fraction = "pel"))%>%
+  bind_rows(results(DESeq2_data_set_pel, c("condition", "3", "2")) %>%
+              as.tibble(rownames = "gene_name") %>%
+              dplyr::select(gene_name, baseMean, log2FoldChange, pvalue) %>%
+              mutate("condition_A" = 3, "condition_B" = 2, fraction = "pel")) 
+
+```
+
 ```{r output_results}
-write_tsv(mixing_ratios_TSP, here("data/output/stan_model/mixing_ratios_TSP_raw.tsv"))
+write_tsv(DESeq2_with_edward_model_results, here("data/output/diff_frac_models/DESeq2_with_edward_model_results.tsv"))
 ```
