@@ -13,6 +13,7 @@ library(here)
 num_gene = 300
 phi = 100
 num_rep = 3
+num_condition = 3
 noisy_neg_bin_dispersion = 20
 
 knitr::opts_chunk$set(echo = FALSE)
@@ -62,27 +63,20 @@ ggplot(thirty_degree_total_rna_count %>%
 
 ```{r balanced-simulated-frac-counts}
 set.seed(338)
-sample_noisy_counts <- function(mean, dispersion, num_rep, rep_scale_factor){
-  noisy_rep_counts <- replicate(num_rep,
-            rnbinom(length(mean),
-                    size = dispersion,
-                    mu  = mean),
-            simplify = FALSE) %>%
-    unlist()
-  
-  for(i in 1:num_rep){
-    noisy_rep_counts[(1 + length(mean) * (i - 1)) : (length(mean) * i)] <- noisy_rep_counts[(1 + length(mean) * (i - 1)) : (length(mean) * i)] * rep_scale_factor[i]
-  }
-  
-  noisy_rep_counts
+sample_noisy_counts <- function(mean, dispersion, rep_scale_factor){
+  rnbinom(length(mean),
+          size = dispersion,
+          mu  = mean * rep_scale_factor)
 }
 
-sup_pel_simulated_fractions <- tibble(sup_frac = c(rep(0.5, num_gene/2),
-                                                              rep(0.75,num_gene/4),
-                                                              rep(0.25,num_gene/4)),
-                                                 pel_frac = 1 - sup_frac)
+sup_pel_simulated_fractions <- tibble(gene_name = 1:num_gene,
+                                      sup_frac = c(rep(0.5, num_gene/2),
+                                                   rep(0.75,num_gene/4),
+                                                   rep(0.25,num_gene/4)),
+                                      pel_frac = 1 - sup_frac)
 
-tot_sup_pel_scale_factor <- tibble(total = runif(num_rep, min = 0.5, max = 3),
+tot_sup_pel_scale_factor <- tibble(rep = 1:num_rep,
+                                   total = runif(num_rep, min = 0.5, max = 3),
                                    sup = runif(num_rep, min = 0.5, max = 3),
                                    pel = runif(num_rep, min = 0.5, max = 3))
 
@@ -93,20 +87,19 @@ total_sup_pel_simulated_mean_counts <- tibble(gene_name = 1:length(sup_pel_simul
                                               sup = total * sup_pel_simulated_fractions$sup_frac,
                                               pel = total * sup_pel_simulated_fractions$pel_frac)
 
-total_sup_pel_simulated_noisy_counts <- tibble(gene_name = rep(total_sup_pel_simulated_mean_counts$gene_name, num_rep),
-                                               rep = rep(1:num_rep, each = num_gene),
-            total = sample_noisy_counts(total_sup_pel_simulated_mean_counts$total,
-                                  phi,
-                                  num_rep,
-                                  tot_sup_pel_scale_factor$total),
-            sup = sample_noisy_counts(total_sup_pel_simulated_mean_counts$sup,
-                                  phi,
-                                  num_rep,
-                                  tot_sup_pel_scale_factor$sup),
-            pel = sample_noisy_counts(total_sup_pel_simulated_mean_counts$pel,
-                                  phi,
-                                  num_rep,
-                                  tot_sup_pel_scale_factor$pel)) %>%
+total_sup_pel_simulated_noisy_counts <- total_sup_pel_simulated_mean_counts %>%
+  pivot_longer(c("total", "sup", "pel"),
+               names_to = "fraction",
+               values_to = "perfect_counts") %>%
+   inner_join(tot_sup_pel_scale_factor %>%
+                pivot_longer(c("total", "sup", "pel"),
+                             names_to = "fraction",
+                             values_to = "scale_factor")) %>%
+  group_by(fraction, rep) %>%
+  summarise(gene_name = gene_name,
+            noisy_counts = sample_noisy_counts(perfect_counts, phi, scale_factor)) %>%
+  pivot_wider(names_from = "fraction",
+              values_from = "noisy_counts") %>%
   mutate(total = as.integer(total),
          sup = as.integer(sup),
          pel = as.integer(pel)) %>%
@@ -158,35 +151,79 @@ ggplot(noisy_sim_and_real_counts) +
 ```{r skewed-simulated-frac-counts}
 set.seed(338)
 
-sup_pel_simulated_fractions_skewed <- tibble(sup_frac = c(rep(0.75,num_gene - 20),
+sup_pel_simulated_fractions_skewed <- tibble(gene_name = 1:num_gene,
+                                             sup_frac = c(rep(0.75,num_gene - 20),
                                                               rep(0.25,20)),
                                                  pel_frac = 1 - sup_frac)
 
-total_sup_pel_simulated_mean_counts_skew <- tibble(gene_name = 1:length(sup_pel_simulated_fractions_skewed$sup_frac),
+total_sup_pel_simulated_mean_counts_skew <- tibble(gene_name = 1:num_gene,
                                               total = rlnorm(length(gene_name),
                                                   meanlog = total_count_model$estimate[1], 
                                                   sdlog = total_count_model$estimate[2]),
                                               sup = total * sup_pel_simulated_fractions_skewed$sup_frac,
                                               pel = total * sup_pel_simulated_fractions_skewed$pel_frac)
 
-total_sup_pel_simulated_noisy_counts_skew <- tibble(gene_name = rep(total_sup_pel_simulated_mean_counts_skew$gene_name, num_rep),
-                                               rep = rep(1:num_rep, each = num_gene),
-            total = sample_noisy_counts(total_sup_pel_simulated_mean_counts_skew$total,
-                                  phi,
-                                  num_rep,
-                                  tot_sup_pel_scale_factor$total),
-            sup = sample_noisy_counts(total_sup_pel_simulated_mean_counts_skew$sup,
-                                  phi,
-                                  num_rep,
-                                  tot_sup_pel_scale_factor$sup),
-            pel = sample_noisy_counts(total_sup_pel_simulated_mean_counts_skew$pel,
-                                  phi,
-                                  num_rep,
-                                  tot_sup_pel_scale_factor$pel)) %>%
+total_sup_pel_simulated_noisy_counts_skew <- total_sup_pel_simulated_mean_counts_skew %>%
+  pivot_longer(c("total", "sup", "pel"),
+               names_to = "fraction",
+               values_to = "perfect_counts") %>%
+  inner_join(tot_sup_pel_scale_factor %>%
+               pivot_longer(c("total", "sup", "pel"),
+                            names_to = "fraction",
+                            values_to = "scale_factor")) %>%
+  group_by(fraction, rep) %>%
+  summarise(gene_name = gene_name, noisy_counts = sample_noisy_counts(perfect_counts, phi, scale_factor)) %>%
+  pivot_wider(names_from = "fraction", values_from = "noisy_counts") %>%
   mutate(total = as.integer(total),
          sup = as.integer(sup),
          pel = as.integer(pel)) %>%
   arrange(gene_name)
+```
+
+```{r skewed-three-condition-simulated-frac-counts}
+set.seed(338)
+
+sup_pel_simulated_fractions_skewed_multi_condition <- tibble(gene_name = rep(1:num_gene,
+                                                                             num_condition),
+                                                             condition = rep(1:num_condition,
+                                                                             each = num_gene),
+                                                             sup_frac = c(rbeta(num_gene,2,2),
+                                                                          rbeta(num_gene,4,2),
+                                                                          rbeta(num_gene,4,1)),
+                                                             pel_frac = 1 - sup_frac)
+
+tot_sup_pel_scale_factor_multi_condition <- tibble(rep = rep(1:num_rep,
+                                                             num_condition),
+                                                   condition = rep(1:num_condition,
+                                                                   each = num_rep),
+                                                   total = runif(num_rep * num_condition,
+                                                                 min = 0.5, max = 3),
+                                                   sup = runif(num_rep * num_condition,
+                                                               min = 0.5, max = 3),
+                                                   pel = runif(num_rep * num_condition,
+                                                               min = 0.5, max = 3))
+
+total_sup_pel_simulated_mean_counts_skewed_multi_condition <- sup_pel_simulated_fractions_skewed_multi_condition %>%
+  mutate(total = rep(rlnorm(num_gene,
+                            meanlog = total_count_model$estimate[1],
+                            sdlog = total_count_model$estimate[2]),
+                     num_condition),
+         sup = total * sup_frac,
+         pel = total * pel_frac)
+
+total_sup_pel_simulated_noisy_counts_skewed_multi_condition <- total_sup_pel_simulated_mean_counts_skewed_multi_condition %>%
+  dplyr::select(-sup_frac, -pel_frac) %>%
+  pivot_longer(c("total", "sup", "pel"), names_to = "fraction", values_to = "perfect_counts") %>%
+  inner_join(tot_sup_pel_scale_factor_multi_condition%>%
+  pivot_longer(c("total", "sup", "pel"), names_to = "fraction", values_to = "scale_factor")) %>%
+  group_by(fraction, condition, rep) %>%
+  summarise(gene_name = gene_name, noisy_counts = sample_noisy_counts(perfect_counts, phi, scale_factor)) %>%
+  pivot_wider(names_from = "fraction", values_from = "noisy_counts") %>%
+  mutate(total = as.integer(total),
+         sup = as.integer(sup),
+         pel = as.integer(pel)) %>%
+  arrange(gene_name)
+
 ```
 
 ```{r output-sim-counts}
@@ -195,4 +232,8 @@ write_tsv(total_sup_pel_simulated_noisy_counts, here("data/output/simulated_coun
 write_tsv(total_sup_pel_simulated_mean_counts, here("data/output/simulated_counts/total_sup_pel_simulated_noiseless_counts.tsv"))
 
 write_tsv(total_sup_pel_simulated_noisy_counts_skew, here("data/output/simulated_counts/total_sup_pel_simulated_noisy_skewed_counts.tsv"))
+
+write_tsv(total_sup_pel_simulated_noisy_counts_skewed_multi_condition, here("data/output/simulated_counts/total_sup_pel_simulated_noisy_skewed_multi_condition_counts.tsv"))
+
+write_tsv(sup_pel_simulated_fractions_skewed_multi_condition, here("data/output/simulated_counts/sup_pel_simulated_fractions.tsv"))
 ```

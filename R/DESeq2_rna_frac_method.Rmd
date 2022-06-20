@@ -10,35 +10,72 @@ library(here)
 library(DESeq2)
 library(tidyverse)
 
-total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_counts.tsv"))
+total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_skewed_multi_condition_counts.tsv"))
 ```
 
 ```{r run-DESeq}
-fractionation_count_matrix <- total_sup_pel_simulated_noisy_counts %>%
-  pivot_wider(names_from = "rep",
-              values_from = c("total", "sup", "pel")) %>%
+fractionation_count_matrix_sup <- total_sup_pel_simulated_noisy_counts %>%
+  dplyr::select(-total, -pel) %>%
+  pivot_wider(names_from = c("rep", "condition"),
+              values_from = c("sup")) %>%
   column_to_rownames("gene_name") %>%
   as.matrix()
 
-column_data <- data.frame(fraction = factor(rep(c("total", "sup", "pel"), 
-                                         each = 3)), 
-                          type = "single_read")
+column_data_sup <- data.frame(fraction = factor(rep("sup",each = 9)),
+                          condition = factor(rep(1:3,3)))
 
-rownames(column_data) <- colnames(fractionation_count_matrix)
+rownames(column_data_sup) <- colnames(fractionation_count_matrix_sup)
 
-DESeq2_data_set <- DESeqDataSetFromMatrix(countData = fractionation_count_matrix, 
-                                          colData = column_data,
-                                          design = ~fraction)
+DESeq2_data_set_sup <- DESeqDataSetFromMatrix(countData = fractionation_count_matrix_sup, 
+                                          colData = column_data_sup,
+                                          design = ~condition)
 
-DESeq2_data_set <- DESeq(DESeq2_data_set)
+DESeq2_data_set_sup <- DESeq(DESeq2_data_set_sup)
 
-res <- results(DESeq2_data_set, contrast = c("fraction", "sup", "pel"))
+fractionation_count_matrix_pel <- total_sup_pel_simulated_noisy_counts %>%
+  dplyr::select(-total, -sup) %>%
+  pivot_wider(names_from = c("rep", "condition"),
+              values_from = c("pel")) %>%
+  column_to_rownames("gene_name") %>%
+  as.matrix()
 
-significant_diff_expression <- as.tibble(res, rownames = "gene_name") %>% 
-  filter(padj < 0.05, !is.na(pvalue))
-  
+column_data_pel <- data.frame(fraction = factor(rep("pel",each = 9)),
+                          condition = factor(rep(1:3,3)))
+
+rownames(column_data_pel) <- colnames(fractionation_count_matrix_pel)
+
+DESeq2_data_set_pel <- DESeqDataSetFromMatrix(countData = fractionation_count_matrix_pel, 
+                                          colData = column_data_pel,
+                                          design = ~condition)
+
+DESeq2_data_set_pel <- DESeq(DESeq2_data_set_pel)
+
+DESeq2_with_edward_model_results <- results(DESeq2_data_set_sup, c("condition", "3", "1")) %>%
+  as.tibble(rownames = "gene_name") %>%
+  dplyr::select(gene_name, baseMean, log2FoldChange, pvalue) %>%
+  mutate("condition_A" = 3, "condition_B" = 1, fraction = "sup") %>%
+  bind_rows(results(DESeq2_data_set_sup, c("condition", "3", "2")) %>%
+              as.tibble(rownames = "gene_name") %>%
+              dplyr::select(gene_name, baseMean, log2FoldChange, pvalue) %>%
+              mutate("condition_A" = 3, "condition_B" = 2, fraction = "sup")) %>%
+  bind_rows(results(DESeq2_data_set_sup, c("condition", "2", "1")) %>%
+              as.tibble(rownames = "gene_name") %>%
+              dplyr::select(gene_name, baseMean, log2FoldChange, pvalue) %>%
+              mutate("condition_A" = 2, "condition_B" = 1, fraction = "sup"))%>%
+  bind_rows(results(DESeq2_data_set_pel, c("condition", "3", "1")) %>%
+              as.tibble(rownames = "gene_name") %>%
+              dplyr::select(gene_name, baseMean, log2FoldChange, pvalue) %>%
+              mutate("condition_A" = 3, "condition_B" = 1, fraction = "pel")) %>%
+  bind_rows(results(DESeq2_data_set_pel, c("condition", "2", "1")) %>%
+              as.tibble(rownames = "gene_name") %>%
+              dplyr::select(gene_name, baseMean, log2FoldChange, pvalue) %>%
+              mutate("condition_A" = 2, "condition_B" = 1, fraction = "pel"))%>%
+  bind_rows(results(DESeq2_data_set_pel, c("condition", "3", "2")) %>%
+              as.tibble(rownames = "gene_name") %>%
+              dplyr::select(gene_name, baseMean, log2FoldChange, pvalue) %>%
+              mutate("condition_A" = 3, "condition_B" = 2, fraction = "pel"))
 ```
 
 ```{r save-result, eval=FALSE}
-write_tsv(as.tibble(res, rownames = "gene_name"), here("./data/output/diff_frac_models/DESeq2_only_counts.tsv"))
+write_tsv(DESeq2_with_edward_model_results, here("./data/output/diff_frac_models/DESeq2_only_multi_condition_results.tsv"))
 ```

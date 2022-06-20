@@ -13,25 +13,27 @@ library(tidybayes)
 
 options(mc.cores = parallel::detectCores())
 
-total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_counts.tsv"))
+total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_skewed_multi_condition_counts.tsv"))
 ```
 
 ```{r mixingratiosTSP_stan}
 mdat_mixingTSP <- function(ctdata) {
   # fix order of counts so grouped together by replicate
   ctdata = ctdata %>%
-    arrange(rep)
+    arrange(condition, rep)
   
   # define total rep and RNA
   NRNA=length(unique(ctdata$gene_name))
   NREP=length(unique(ctdata$rep))
+  NCON=length(unique(ctdata$rep))
   
     ## make data for stan fit
     list(NRNA=NRNA,
          NREP=NREP,
-         tot_obs=array(as.integer(round(ctdata$total)), c(NRNA,NREP)),
-         sup_obs=array(as.integer(round(ctdata$sup)), c(NRNA,NREP)),
-         pel_obs=array(as.integer(round(ctdata$pel)), c(NRNA,NREP))
+         NCON=NCON,
+         tot_obs=array(as.integer(round(ctdata$total)), c(NRNA,NREP,NCON)),
+         sup_obs=array(as.integer(round(ctdata$sup)), c(NRNA,NREP,NCON)),
+         pel_obs=array(as.integer(round(ctdata$pel)), c(NRNA,NREP,NCON))
          )
     
 }
@@ -46,21 +48,24 @@ data {
   // Number of replicates
   int<lower=1> NREP; 
   
+  // Number of conditions
+  int<lower=1> NCON;
+  
   // Note: These are all integers
   // columns t, s, p
-  int<lower=0> tot_obs[NRNA, NREP];
-  int<lower=0> sup_obs[NRNA, NREP];
-  int<lower=0> pel_obs[NRNA, NREP];
+  int<lower=0> tot_obs[NRNA, NREP, NCON];
+  int<lower=0> sup_obs[NRNA, NREP, NCON];
+  int<lower=0> pel_obs[NRNA, NREP, NCON];
 }
 parameters {
   // Normalising factors
-  real<lower=0> total_scale_factor[NREP];
-  real<lower=0> sup_scale_factor[NREP];
-  real<lower=0> pel_scale_factor[NREP];
+  real<lower=0> total_scale_factor[NREP, NCON];
+  real<lower=0> sup_scale_factor[NREP, NCON];
+  real<lower=0> pel_scale_factor[NREP, NCON];
 
   // latent counts
-  real<lower=0> sup_latent[NRNA];
-  real<lower=0> pel_latent[NRNA];
+  real<lower=0> sup_latent[NRNA, NCON];
+  real<lower=0> pel_latent[NRNA, NCON];
   
   // latent count gamma prior parameters
   real<lower=0> pel_gamma_alpha;
@@ -69,41 +74,44 @@ parameters {
   real<lower=0> sup_gamma_beta;
   
   // dispersion parameter for counts
-  real<lower=0> tot_phi;
+  real<lower=0> phi;
 }
 model{
-
-  total_scale_factor ~ normal(1.5,0.5);
-  pel_scale_factor ~ normal(1.5,0.5);
-  sup_scale_factor ~ normal(1.5,0.5);
   sup_gamma_alpha ~ normal(7,2);
   pel_gamma_alpha ~ normal(7,2);
   sup_gamma_beta ~ normal(2,1);
   pel_gamma_beta ~ normal(2,1);
-  tot_phi ~ normal(100, 1);
+  phi ~ normal(100, 1);
+
+  for(con in 1:NCON){
+    total_scale_factor[, con] ~ normal(1.5,0.5);
+    pel_scale_factor[, con] ~ normal(1.5,0.5);
+    sup_scale_factor[, con] ~ normal(1.5,0.5);
    
-  // latent counts
-  sup_latent ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
-  pel_latent ~ lognormal(pel_gamma_alpha, pel_gamma_beta);
+    // latent counts
+    sup_latent[, con] ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
+    pel_latent[, con] ~ lognormal(pel_gamma_alpha, pel_gamma_beta);
       
-  for(rna in 1:NRNA){
-    for(rep in 1:NREP){
-      // fractions
-      sup_obs[rna,rep] ~ neg_binomial_2(sup_scale_factor[rep] * sup_latent[rna], tot_phi);
-      pel_obs[rna,rep] ~ neg_binomial_2(pel_scale_factor[rep] * pel_latent[rna], tot_phi);
+    for(rna in 1:NRNA){
+      for(rep in 1:NREP){
+          // fractions
+          sup_obs[rna, rep, con] ~ neg_binomial_2(sup_scale_factor[rep, con] *
+                                                  sup_latent[rna, con],
+                                                phi);
+                                              
+        pel_obs[rna, rep, con] ~ neg_binomial_2(pel_scale_factor[rep, con] *
+                                                  pel_latent[rna, con],
+                                                phi);
   
-      // count distn negative binomial with specified means
-      // total
-      tot_obs[rna,rep] ~ neg_binomial_2(total_scale_factor[rep] * (sup_latent[rna] + pel_latent[rna]), tot_phi);
+        // count distn negative binomial with specified means
+        // total
+        tot_obs[rna, rep, con] ~ neg_binomial_2(total_scale_factor[rep, con] *
+                                            (sup_latent[rna, con] + pel_latent[rna,con]),
+                                          phi);
+      }
     }
   }
-}
-generated quantities{
-  // print("Mixing pars (sup,p100) = (", mixing_sup,",",mixing_p100,")");
-  // print("dispersion phi = ", phi);
-  // print("------------------");
-}
-',
+}',
 data=stan_dat,chains = 1,iter = 10)
 }
 
@@ -120,20 +128,20 @@ extract_summary_statistics <- function(stan_model){
     # return medians
     list(
         latent_counts = stan_model %>% 
-          spread_draws(sup_latent[gene_name],
-                       pel_latent[gene_name]) %>%
+          spread_draws(sup_latent[gene_name, condition],
+                       pel_latent[gene_name, condition]) %>%
           summarise_draws(),
         scale_factors = stan_model %>% 
-          spread_draws(total_scale_factor[rep],
-                       pel_scale_factor[rep],
-                       sup_scale_factor[rep]) %>%
+          spread_draws(total_scale_factor[rep, condition],
+                       pel_scale_factor[rep, condition],
+                       sup_scale_factor[rep, condition]) %>%
           summarise_draws(),
         dispersion_parameters = stan_model %>% 
           spread_draws(sup_gamma_alpha,
                        sup_gamma_beta,
                        pel_gamma_alpha,
                        pel_gamma_beta,
-                       tot_phi) %>%
+                       phi) %>%
           summarise_draws(),
         lp = stan_model %>% 
           spread_draws(lp__) %>%
@@ -150,17 +158,52 @@ getmixingratiosTSP <- function(ctdata,iter=1000,
 
 test_diff_frac <- function(stan_model){
   stan_model %>% 
-    spread_draws(sup_latent[gene_name]) %>%
+    spread_draws(sup_latent[gene_name, condition]) %>%
     inner_join(stan_count_model %>% 
-                 spread_draws(pel_latent[gene_name]),
+                 spread_draws(pel_latent[gene_name, condition]),
                by=c("gene_name",
+                    "condition",
                     ".chain",
                     ".iteration",
                     ".draw")) %>%
-    group_by(gene_name) %>%
+    group_by(gene_name, condition) %>%
     transmute(sup_latent = sample(sup_latent),
               pel_latent = sample(pel_latent)) %>%
-    summarise(p.value = sum( pel_latent / sup_latent > 1) / length(sup_latent))
+    summarise(p.value = sum( pel_latent / sup_latent > 1) / length(sup_latent), .groups = "drop")
+}
+
+test_frac_across_condition <- function(condition, count){
+  unique_permutations <- tibble(condition_A = unique(condition), condition_B = unique(condition)) %>% 
+    expand(condition_A, condition_B) %>% 
+    filter(condition_A > condition_B)
+  
+  unique_permutations %>%
+    dplyr::select(condition_A) %>%
+    inner_join(tibble(condition_A = condition, count_A = count), by = "condition_A") %>%
+    bind_cols(unique_permutations %>%
+                dplyr::select(condition_B) %>%
+                inner_join(tibble(condition_B = condition, count_B = count), by = "condition_B")) %>%
+    group_by(condition_A, condition_B) %>%
+    summarise(p.value = sum(count_A > count_B) / (length(count)/ length(unique(condition))), .groups = "drop")
+}
+
+test_diff_condition <- function(stan_model){
+  stan_model %>% 
+    spread_draws(sup_latent[gene_name, condition]) %>%
+    inner_join(stan_count_model %>% 
+                 spread_draws(pel_latent[gene_name, condition]),
+               by=c("gene_name",
+                    "condition",
+                    ".chain",
+                    ".iteration",
+                    ".draw")) %>%
+    group_by(gene_name, condition) %>%
+    transmute(sup_latent = sample(sup_latent),
+              pel_latent = sample(pel_latent)) %>%
+    ungroup() %>%
+    pivot_longer(c("sup_latent", "pel_latent"), names_to = "fraction", values_to = "counts") %>%
+    group_by(gene_name, fraction) %>%
+    summarise(test_frac_across_condition(condition, counts), .groups = "drop")
 }
 
 create_diff_fractionation_results <- function(stan_model){
