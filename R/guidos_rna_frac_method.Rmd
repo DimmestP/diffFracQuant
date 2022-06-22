@@ -13,7 +13,16 @@ library(tidybayes)
 
 options(mc.cores = parallel::detectCores())
 
-total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_skewed_multi_condition_counts.tsv"))
+total_sup_pel_iserman_et_al_counts <- read_tsv(here("data/input/Iserman_et_al_dataset/full_transcript_counts.txt")) %>%
+  pivot_longer(-ensembl_gene_id, names_to = "sample", values_to = "counts") %>%
+  separate(sample, "_", into = c("strain", "temperature", "rep", "fraction", NA)) %>%
+  pivot_wider(names_from = fraction, values_from = counts) %>%
+  transmute(gene_name = ensembl_gene_id,
+            condition = paste0(strain, "_", temperature),
+            pel = pellet,
+            sup = SN,
+            rep,
+            total)
 ```
 
 ```{r mixingratiosTSP_stan}
@@ -25,7 +34,7 @@ mdat_mixingTSP <- function(ctdata) {
   # define total rep and RNA
   NRNA=length(unique(ctdata$gene_name))
   NREP=length(unique(ctdata$rep))
-  NCON=length(unique(ctdata$rep))
+  NCON=length(unique(ctdata$condition))
   
     ## make data for stan fit
     list(NRNA=NRNA,
@@ -205,7 +214,7 @@ test_diff_condition <- function(stan_model){
 ```{r run-stan-model-on-sim-data, eval=FALSE}
 
 # compile stan model, test it with 10 iterations, save output
-stan_count_model <- total_sup_pel_simulated_noisy_counts %>%
+stan_count_model <- total_sup_pel_iserman_et_al_counts %>%
   filter(total > 5,
          sup > 5,
          pel > 5) %>%
@@ -218,7 +227,7 @@ myseed = 39
 mixing_ratios_TSP <- total_sup_pel_simulated_noisy_counts %>%
     getmixingratiosTSP(, stan_mixing=stan_count_model,iter=500,seed=myseed)
 
-mixing_ratios_TSP <- total_sup_pel_simulated_noisy_counts %>%
+mixing_ratios_TSP <- total_sup_pel_iserman_et_al_counts %>%
     getmixingratiosTSP(, stan_mixing=stan_count_model,iter=50,seed=myseed)
 
 stan_count_model <- total_sup_pel_simulated_noisy_counts %>%

@@ -12,7 +12,9 @@ library(tidyverse)
 library(here)
 library(tidybayes)
 
-total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_skewed_multi_condition_counts.tsv"))
+total_sup_pel_iserman_et_al_counts <- read_tsv(here("data/input/Iserman_et_al_dataset/full_transcript_counts.txt")) %>%
+  pivot_longer(-ensembl_gene_id, names_to = "sample", values_to = "counts") %>%
+  separate(sample, "_", into = c("strain", "temperature", "rep", "fraction", NA))
 ```
 
 ```{r mixingratiosTSP_stan}
