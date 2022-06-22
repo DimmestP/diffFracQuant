@@ -22,7 +22,8 @@ total_sup_pel_iserman_et_al_counts <- read_tsv(here("data/input/Iserman_et_al_da
             pel = pellet,
             sup = SN,
             rep,
-            total)
+            total) %>%
+  filter(condition %in% c("IDR_30C", "IDR_42C", "WT_30C", "WT_42C"))
 ```
 
 ```{r mixingratiosTSP_stan}
@@ -68,13 +69,12 @@ data {
 }
 parameters {
   // Normalising factors
-  real<lower=0> total_scale_factor[NREP, NCON];
   real<lower=0> sup_scale_factor[NREP, NCON];
   real<lower=0> pel_scale_factor[NREP, NCON];
 
   // latent counts
-  real<lower=0> sup_latent[NRNA, NCON];
-  real<lower=0> pel_latent[NRNA, NCON];
+  vector<lower=0>[NRNA] sup_latent[NCON];
+  vector<lower=0>[NRNA] pel_latent[NCON];
   
   // latent count gamma prior parameters
   real<lower=0> pel_gamma_alpha;
@@ -90,35 +90,30 @@ model{
   pel_gamma_alpha ~ normal(7,2);
   sup_gamma_beta ~ normal(2,1);
   pel_gamma_beta ~ normal(2,1);
-  phi ~ normal(100, 1);
+  phi ~ normal(100, 10);
 
   for(con in 1:NCON){
-    total_scale_factor[, con] ~ normal(1.5,0.5);
-    pel_scale_factor[, con] ~ normal(1.5,0.5);
-    sup_scale_factor[, con] ~ normal(1.5,0.5);
+    pel_scale_factor[, con] ~ normal(10, 1);
+    sup_scale_factor[, con] ~ normal(10, 1);
    
     // latent counts
-    sup_latent[, con] ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
-    pel_latent[, con] ~ lognormal(pel_gamma_alpha, pel_gamma_beta);
-      
-    for(rna in 1:NRNA){
+    sup_latent[con] ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
+    pel_latent[con] ~ lognormal(pel_gamma_alpha, pel_gamma_beta);
+    
       for(rep in 1:NREP){
           // fractions
-          sup_obs[rna, rep, con] ~ neg_binomial_2(sup_scale_factor[rep, con] *
-                                                  sup_latent[rna, con],
+          sup_obs[, rep, con] ~ neg_binomial_2(sup_scale_factor[rep, con] *
+                                                  sup_latent[con],
                                                 phi);
                                               
-        pel_obs[rna, rep, con] ~ neg_binomial_2(pel_scale_factor[rep, con] *
-                                                  pel_latent[rna, con],
+        pel_obs[, rep, con] ~ neg_binomial_2(pel_scale_factor[rep, con] *
+                                                  pel_latent[con],
                                                 phi);
   
         // count distn negative binomial with specified means
         // total
-        tot_obs[rna, rep, con] ~ neg_binomial_2(total_scale_factor[rep, con] *
-                                            (sup_latent[rna, con] + pel_latent[rna,con]),
-                                          phi);
+        tot_obs[, rep, con] ~ neg_binomial_2(sup_latent[con] + pel_latent[con], phi);
       }
-    }
   }
 }',
 data=stan_dat,chains = 1,iter = 10)
@@ -141,8 +136,7 @@ extract_summary_statistics <- function(stan_model){
                        pel_latent[gene_name, condition]) %>%
           summarise_draws(),
         scale_factors = stan_model %>% 
-          spread_draws(total_scale_factor[rep, condition],
-                       pel_scale_factor[rep, condition],
+          spread_draws(pel_scale_factor[rep, condition],
                        sup_scale_factor[rep, condition]) %>%
           summarise_draws(),
         dispersion_parameters = stan_model %>% 
@@ -228,7 +222,7 @@ mixing_ratios_TSP <- total_sup_pel_simulated_noisy_counts %>%
     getmixingratiosTSP(, stan_mixing=stan_count_model,iter=500,seed=myseed)
 
 mixing_ratios_TSP <- total_sup_pel_iserman_et_al_counts %>%
-    getmixingratiosTSP(, stan_mixing=stan_count_model,iter=50,seed=myseed)
+    getmixingratiosTSP(, stan_mixing=stan_count_model,iter=20,seed=myseed)
 
 stan_count_model <- total_sup_pel_simulated_noisy_counts %>%
     fit_mixingTSP(stan_mixing=stan_count_model, iter=100)
