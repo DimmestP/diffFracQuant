@@ -10,88 +10,75 @@ library(here)
 library(DESeq2)
 library(tidyverse)
 
-total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_skewed_multi_condition_counts.tsv"))
+total_sup_pel_iserman_et_al_counts <- read_tsv(here("data/input/Iserman_et_al_dataset/full_transcript_counts.txt"))
 ```
 
 ```{r run-DESeq}
-fractionation_count_matrix_1_2 <- total_sup_pel_simulated_noisy_counts %>%
-  filter(condition != 3) %>%
-  dplyr::select(-total) %>%
-  pivot_wider(names_from = c("rep", "condition"),
-              values_from = c("sup", "pel")) %>%
-  column_to_rownames("gene_name") %>%
+fractionation_count_matrix_IDR_30C_IDR_40C <- total_sup_pel_iserman_et_al_counts %>%
+  select("ensembl_gene_id", "IDR_30C_1_pellet_262", "IDR_30C_2_pellet_263",
+         "IDR_30C_1_SN_244","IDR_30C_2_SN_245", "IDR_40C_1_pellet_264",
+        "IDR_40C_2_pellet_265", "IDR_40C_1_SN_246", "IDR_40C_2_SN_247") %>%
+  column_to_rownames("ensembl_gene_id") %>%
   as.matrix()
 
-column_data_1_2 <- data.frame(fraction = factor(rep(c("sup", "pel"), each = 4)),
-                          condition = factor(rep(rep(1:2,each = 2),2)))
+column_data_IDR_30C_IDR_40C <- data.frame(fraction = factor(rep(rep(c("pel", "sup"), each = 2), 2)),
+                          condition = factor(rep(c("IDR.30C", "IDR.40C"), each = 4)))
 
-rownames(column_data_1_2) <- colnames(fractionation_count_matrix_1_2)
+rownames(column_data_IDR_30C_IDR_40C) <- colnames(fractionation_count_matrix_IDR_30C_IDR_40C)
 
-DESeq2_data_set_1_2 <- DESeqDataSetFromMatrix(countData = fractionation_count_matrix_1_2, 
-                                          colData = column_data_1_2,
+DESeq2_data_set_IDR_30C_IDR_40C <- DESeqDataSetFromMatrix(countData = fractionation_count_matrix_IDR_30C_IDR_40C, 
+                                          colData = column_data_IDR_30C_IDR_40C,
                                           design = ~fraction * condition)
 
-DESeq2_data_set_1_2 <- DESeq(DESeq2_data_set_1_2, test = "LRT", reduced = ~fraction + condition)
+DESeq2_data_set_IDR_30C_IDR_40C <- DESeq(DESeq2_data_set_IDR_30C_IDR_40C, test = "LRT", reduced = ~fraction + condition)
 
 
-DESeq2_result_1_2 <- results(DESeq2_data_set_1_2)
+DESeq2_result_IDR_30C_IDR_40C <- results(DESeq2_data_set_IDR_30C_IDR_40C)
 
-fractionation_count_matrix_2_3 <- total_sup_pel_simulated_noisy_counts %>%
-  filter(condition != 1) %>%
-  dplyr::select(-total) %>%
-  pivot_wider(names_from = c("rep", "condition"),
-              values_from = c("sup", "pel")) %>%
-  column_to_rownames("gene_name") %>%
+fractionation_count_matrix_WT_30C_WT_40C <- total_sup_pel_iserman_et_al_counts %>%
+  select("ensembl_gene_id", "WT_30C_1_pellet_250", "WT_30C_2_pellet_251",
+         "WT_30C_1_SN_232","WT_30C_2_SN_233", "WT_40C_1_pellet_252",
+        "WT_40C_2_pellet_253", "WT_40C_1_SN_234", "WT_40C_2_SN_235") %>%
+  column_to_rownames("ensembl_gene_id") %>%
   as.matrix()
 
-column_data_2_3 <- data.frame(fraction = factor(rep(c("sup", "pel"), each = 4)),
-                          condition = factor(rep(rep(2:3,each = 2),2)))
+column_data_WT_30C_WT_40C <- data.frame(fraction = factor(rep(rep(c("pel", "sup"), each = 2), 2)),
+                          condition = factor(rep(c("WT.30C", "WT.40C"), each = 4)))
 
-rownames(column_data_2_3) <- colnames(fractionation_count_matrix_2_3)
+rownames(column_data_WT_30C_WT_40C) <- colnames(fractionation_count_matrix_WT_30C_WT_40C)
 
-DESeq2_data_set_2_3 <- DESeqDataSetFromMatrix(countData = fractionation_count_matrix_2_3, 
-                                          colData = column_data_2_3,
+DESeq2_data_set_WT_30C_WT_40C <- DESeqDataSetFromMatrix(countData = fractionation_count_matrix_WT_30C_WT_40C, 
+                                          colData = column_data_WT_30C_WT_40C,
                                           design = ~fraction * condition)
 
-DESeq2_data_set_2_3 <- DESeq(DESeq2_data_set_2_3, test = "LRT", reduced = ~fraction + condition)
+DESeq2_data_set_WT_30C_WT_40C <- DESeq(DESeq2_data_set_WT_30C_WT_40C, test = "LRT", reduced = ~fraction + condition)
 
 
-DESeq2_result_2_3 <- results(DESeq2_data_set_2_3)
-
-fractionation_count_matrix_1_3 <- total_sup_pel_simulated_noisy_counts %>%
-  filter(condition != 2) %>%
-  dplyr::select(-total) %>%
-  pivot_wider(names_from = c("rep", "condition"),
-              values_from = c("sup", "pel")) %>%
-  column_to_rownames("gene_name") %>%
-  as.matrix()
-
-column_data_1_3 <- data.frame(fraction = factor(rep(c("sup", "pel"), each = 4)),
-                          condition = factor(rep(rep(c(1,3),each = 2),2)))
-
-rownames(column_data_1_3) <- colnames(fractionation_count_matrix_1_3)
-
-DESeq2_data_set_1_3 <- DESeqDataSetFromMatrix(countData = fractionation_count_matrix_1_3, 
-                                          colData = column_data_1_3,
-                                          design = ~fraction * condition)
-
-DESeq2_data_set_1_3 <- DESeq(DESeq2_data_set_1_3, test = "LRT", reduced = ~fraction + condition)
+DESeq2_result_WT_30C_WT_40C <- results(DESeq2_data_set_WT_30C_WT_40C)
 
 
-DESeq2_result_1_3 <- results(DESeq2_data_set_1_3)
-
-DESeq2_model_results <- results(DESeq2_data_set_1_2, name = "fractionsup.condition2") %>%
+DESeq2_model_results <- results(DESeq2_data_set_WT_30C_WT_40C, name = "fractionsup.conditionWT.40C") %>%
               as.tibble(rownames = "gene_name") %>%
               dplyr::select(gene_name, baseMean, log2FoldChange, pvalue) %>%
-              mutate("condition_A" = 2, "condition_B" = 1) %>%
-  bind_rows(results(DESeq2_data_set_1_3, name = "fractionsup.condition3") %>%
+              mutate("condition_AB" = "WT_40C_WT_30C") %>%
+  bind_rows(results(DESeq2_data_set_IDR_30C_IDR_40C, name = "fractionsup.conditionIDR.40C") %>%
               as.tibble(rownames = "gene_name") %>%
               dplyr::select(gene_name, baseMean, log2FoldChange, pvalue) %>%
-              mutate("condition_A" = 3, "condition_B" = 1))%>%
-  bind_rows(results(DESeq2_data_set_2_3, name = "fractionsup.condition3") %>%
-              as.tibble(rownames = "gene_name") %>%
-              dplyr::select(gene_name, baseMean, log2FoldChange, pvalue) %>%
-              mutate("condition_A" = 3, "condition_B" = 2))
+              mutate("condition_AB" = "IDR_40C_IDR_30C"))
+
+ggplot(DESeq2_model_results %>% 
+         filter(baseMean > 50) %>%
+         select(gene_name, log2FoldChange, condition_AB) %>% 
+         pivot_wider(names_from = "condition_AB", values_from = "log2FoldChange") %>%
+         inner_join(DESeq2_model_results %>% 
+                      transmute(gene_name, significant = pvalue < 0.05, 
+                                condition_AB = paste0(condition_AB, "_sig")) %>% 
+                      pivot_wider(names_from = condition_AB, values_from = significant))) +
+  geom_point(aes(x=WT_40C_WT_30C, y=IDR_40C_IDR_30C, colour = (WT_40C_WT_30C_sig & !IDR_40C_IDR_30C_sig)), alpha = 0.4) +
+  theme_bw() +
+  coord_equal() +
+  geom_abline(slope = 1, intercept = 0) +
+  labs(colour = "")
 ```
 
 ```{r save-result, eval=FALSE}
