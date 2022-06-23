@@ -132,8 +132,8 @@ extract_summary_statistics <- function(stan_model){
     # return medians
     list(
         latent_counts = stan_model %>% 
-          spread_draws(sup_latent[gene_name, condition],
-                       pel_latent[gene_name, condition]) %>%
+          spread_draws(sup_latent[condition, gene_name],
+                       pel_latent[condition, gene_name]) %>%
           summarise_draws(),
         scale_factors = stan_model %>% 
           spread_draws(pel_scale_factor[rep, condition],
@@ -175,21 +175,18 @@ test_frac_across_condition <- function(condition, ratio){
 }
 
 test_diff_condition <- function(stan_model){
-  summary_stats_ratio <- extract_summary_statistics(stan_model)$latent_counts %>% 
+  latent_count_samples <- stan_model %>% 
+          spread_draws(sup_latent[condition, gene_name],
+                       pel_latent[condition, gene_name])
+  
+  summary_stats_ratio <- latent_count_samples %>%
+          summarise_draws() %>% 
     select(gene_name, condition, variable, median) %>% 
     group_by(gene_name, condition) %>% 
     summarise(ratio = median[1]/median[2])
   
   
-  stan_model %>% 
-    spread_draws(sup_latent[gene_name, condition]) %>%
-    inner_join(stan_count_model %>% 
-                 spread_draws(pel_latent[gene_name, condition]),
-               by=c("gene_name",
-                    "condition",
-                    ".chain",
-                    ".iteration",
-                    ".draw")) %>%
+  latent_count_samples %>%
     group_by(gene_name, condition) %>%
     transmute(sup_latent = sample(sup_latent),
               pel_latent = sample(pel_latent),
