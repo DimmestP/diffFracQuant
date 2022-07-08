@@ -24,13 +24,21 @@ total_sup_pel_iserman_et_al_counts <- read_tsv(here("data/input/Iserman_et_al_da
             rep,
             total) %>%
   filter(condition %in% c("IDR_30C", "IDR_42C", "WT_30C", "WT_42C"))
+
+total_sup_pel_iserman_et_al_counts_subsample <- total_sup_pel_iserman_et_al_counts %>%
+  filter(pel > 0 | sup > 0 | total > 0) %>%
+  group_by(gene_name) %>%
+  filter(length(gene_name) == 8) %>%
+  ungroup() %>%
+  filter(gene_name %in% sample(unique(gene_name), 500))
+
 ```
 
 ```{r mixingratiosTSP_stan}
 mdat_mixingTSP <- function(ctdata) {
   # fix order of counts so grouped together by replicate
   ctdata = ctdata %>%
-    arrange(condition, rep)
+    arrange(gene_name, rep, condition)
   
   # define total rep and RNA
   NRNA=length(unique(ctdata$gene_name))
@@ -41,9 +49,9 @@ mdat_mixingTSP <- function(ctdata) {
     list(NRNA=NRNA,
          NREP=NREP,
          NCON=NCON,
-         tot_obs=array(as.integer(round(ctdata$total)), c(NRNA,NREP,NCON)),
-         sup_obs=array(as.integer(round(ctdata$sup)), c(NRNA,NREP,NCON)),
-         pel_obs=array(as.integer(round(ctdata$pel)), c(NRNA,NREP,NCON))
+         tot_obs=array(as.integer(round(ctdata$total)), c(NCON, NREP, NRNA)),
+         sup_obs=array(as.integer(round(ctdata$sup)), c(NCON, NREP, NRNA)),
+         pel_obs=array(as.integer(round(ctdata$pel)), c(NCON, NREP, NRNA))
          )
     
 }
@@ -63,14 +71,15 @@ data {
   
   // Note: These are all integers
   // columns t, s, p
-  int<lower=0> tot_obs[NRNA, NREP, NCON];
-  int<lower=0> sup_obs[NRNA, NREP, NCON];
-  int<lower=0> pel_obs[NRNA, NREP, NCON];
+  int<lower=0> tot_obs[NCON, NREP, NRNA];
+  int<lower=0> sup_obs[NCON, NREP, NRNA];
+  int<lower=0> pel_obs[NCON, NREP, NRNA];
 }
 parameters {
   // Normalising factors
-  real<lower=0> sup_scale_factor[NREP, NCON];
-  real<lower=0> pel_scale_factor[NREP, NCON];
+  real<lower=0> tot_scale_factor[NCON, NREP];
+  real<lower=0> sup_scale_factor[NCON, NREP];
+  real<lower=0> pel_scale_factor[NCON, NREP];
 
   // latent counts
   vector<lower=0>[NRNA] sup_latent[NCON];
@@ -93,8 +102,9 @@ model{
   phi ~ normal(100, 10);
 
   for(con in 1:NCON){
-    pel_scale_factor[, con] ~ normal(10, 1);
-    sup_scale_factor[, con] ~ normal(10, 1);
+    tot_scale_factor[con] ~ normal(10, 1);
+    pel_scale_factor[con] ~ normal(10, 1);
+    sup_scale_factor[con] ~ normal(10, 1);
    
     // latent counts
     sup_latent[con] ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
@@ -102,17 +112,17 @@ model{
     
       for(rep in 1:NREP){
           // fractions
-          sup_obs[, rep, con] ~ neg_binomial_2(sup_scale_factor[rep, con] *
+          sup_obs[con, rep] ~ neg_binomial_2(sup_scale_factor[con, rep] *
                                                   sup_latent[con],
                                                 phi);
                                               
-        pel_obs[, rep, con] ~ neg_binomial_2(pel_scale_factor[rep, con] *
+        pel_obs[con, rep] ~ neg_binomial_2(pel_scale_factor[con, rep] *
                                                   pel_latent[con],
                                                 phi);
   
         // count distn negative binomial with specified means
         // total
-        tot_obs[, rep, con] ~ neg_binomial_2(sup_latent[con] + pel_latent[con], phi);
+        tot_obs[con, rep] ~ neg_binomial_2(tot_scale_factor[con, rep] * (sup_latent[con] + pel_latent[con]), phi);
       }
   }
 }',
@@ -136,8 +146,9 @@ extract_summary_statistics <- function(stan_model){
                        pel_latent[condition, gene_name]) %>%
           summarise_draws(),
         scale_factors = stan_model %>% 
-          spread_draws(pel_scale_factor[rep, condition],
-                       sup_scale_factor[rep, condition]) %>%
+          spread_draws(tot_scale_factor[condition, rep],
+		       pel_scale_factor[condition, rep],
+                       sup_scale_factor[condition, rep]) %>%
           summarise_draws(),
         dispersion_parameters = stan_model %>% 
           spread_draws(sup_gamma_alpha,
