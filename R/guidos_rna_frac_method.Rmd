@@ -86,43 +86,40 @@ parameters {
   vector<lower=0>[NRNA] pel_latent[NCON];
   
   // latent count gamma prior parameters
-  real<lower=0> pel_gamma_alpha;
-  real<lower=0> pel_gamma_beta;
-  real<lower=0> sup_gamma_alpha;
-  real<lower=0> sup_gamma_beta;
+  real<lower=0> lognorm_alpha[NCON, 2];
+  real<lower=0> lognorm_beta[NCON, 2];
   
   // dispersion parameter for counts
-  real<lower=0> phi;
+  real<lower=0> phi[NCON, 3];
 }
 model{
-  sup_gamma_alpha ~ normal(7,2);
-  pel_gamma_alpha ~ normal(7,2);
-  sup_gamma_beta ~ normal(2,1);
-  pel_gamma_beta ~ normal(2,1);
-  phi ~ normal(100, 10);
-
-  for(con in 1:NCON){
-    tot_scale_factor[con] ~ normal(10, 1);
-    pel_scale_factor[con] ~ normal(10, 1);
-    sup_scale_factor[con] ~ normal(10, 1);
+for(con in 1:NCON){
+    lognorm_alpha[con] ~ normal(7,2);
+    lognorm_beta[con] ~ normal(2,1);
+    tot_scale_factor[con] ~ normal(10, 0.5);
+    pel_scale_factor[con] ~ normal(10, 0.5);
+    sup_scale_factor[con] ~ normal(10, 0.5);
    
+    phi[con] ~ normal(100, 10);
+
     // latent counts
-    sup_latent[con] ~ lognormal(sup_gamma_alpha, sup_gamma_beta);
-    pel_latent[con] ~ lognormal(pel_gamma_alpha, pel_gamma_beta);
+    sup_latent[con] ~ lognormal(lognorm_alpha[con, 1], lognorm_beta[con, 1]);
+    pel_latent[con] ~ lognormal(lognorm_alpha[con, 2], lognorm_beta[con, 2]);
     
-      for(rep in 1:NREP){
+
+    for(rep in 1:NREP){
           // fractions
           sup_obs[con, rep] ~ neg_binomial_2(sup_scale_factor[con, rep] *
                                                   sup_latent[con],
-                                                phi);
+                                                phi[con, 2]);
                                               
         pel_obs[con, rep] ~ neg_binomial_2(pel_scale_factor[con, rep] *
                                                   pel_latent[con],
-                                                phi);
+                                                phi[con, 3]);
   
         // count distn negative binomial with specified means
         // total
-        tot_obs[con, rep] ~ neg_binomial_2(tot_scale_factor[con, rep] * (sup_latent[con] + pel_latent[con]), phi);
+        tot_obs[con, rep] ~ neg_binomial_2(tot_scale_factor[con, rep] * (sup_latent[con] + pel_latent[con]), phi[con, 1]);
       }
   }
 }',
@@ -150,12 +147,12 @@ extract_summary_statistics <- function(stan_model){
 		       pel_scale_factor[condition, rep],
                        sup_scale_factor[condition, rep]) %>%
           summarise_draws(),
-        dispersion_parameters = stan_model %>% 
-          spread_draws(sup_gamma_alpha,
-                       sup_gamma_beta,
-                       pel_gamma_alpha,
-                       pel_gamma_beta,
-                       phi) %>%
+        prior_parameters = stan_model %>% 
+          spread_draws(lognorm_alpha[condition, fraction],
+                       lognorm_beta[condition, fraction]) %>%
+          summarise_draws(),
+	dispersion = stan_model %>%
+          spread_draws(phi[condition, fraction]) %>%
           summarise_draws(),
         lp = stan_model %>% 
           spread_draws(lp__) %>%
