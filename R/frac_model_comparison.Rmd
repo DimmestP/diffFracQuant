@@ -9,118 +9,13 @@ output: pdf_document
 library(tidyverse)
 library(here)
 
-latent_model_results <- read_tsv(here("data/output/diff_frac_models/latent_model_count.tsv"))
-
-
-DESeq_model_results <- read_tsv(here("data/output/diff_frac_models/DESeq2_only_counts.tsv"))
-
-latent_model_results_skewed <- read_tsv(here("data/output/diff_frac_models/latent_model_skewed_count.tsv"))
-
 latent_model_results_skewed_multi_condition <-  read_tsv(here("data/output/diff_frac_models/latent_model_skewed_multi_condition_count.tsv"))
 
 simulate_skewed_multi_condition_fractions <-  read_tsv(here("data/output/simulated_counts/sup_pel_simulated_fractions.tsv")) 
 
-DESeq_model_results_skewed <- read_tsv(here("data/output/diff_frac_models/DESeq2_only_skewed_counts.tsv"))
-
-DESeq2_with_raw_model_results <- read_tsv(here("data/output/diff_frac_models/DESeq2_with_edward_model_results.tsv"))
+DESeq2_with_original_model_results <- read_tsv(here("data/output/diff_frac_models/DESeq2_with_edward_model_results.tsv"))
 
 DESeq2_model_multi_condition_results <- read_tsv(here("./data/output/diff_frac_models/DESeq2_only_multi_condition_results.tsv"))
-```
-
-```{r function}
-calc_FPR_and_TPR <- function(p.value, foldchange, truth, threshold){
-  
-  TN_equal = sum(p.value[truth == "equal"] > threshold, na.rm = TRUE)
-  FP_equal = sum(truth == "equal" & !is.na(p.value)) - TN_equal
-  
-  TP_sup = sum(p.value[truth == "sup" & !is.na(foldchange) & foldchange > 0] <= threshold, na.rm = TRUE)
-  FN_sup = sum(truth == "sup"& !is.na(p.value)) - TP_sup
-  
-  TP_pel = sum(p.value[truth == "pel" & !is.na(foldchange) & foldchange < 0] <= threshold, na.rm = TRUE)
-  FN_pel = sum(truth == "pel"& !is.na(p.value)) - TP_pel
-  
-  tibble(threshold, true_positive = (TP_pel + TP_sup) / sum(truth != "equal"),
-         false_positive = FP_equal / sum(truth == "equal"))
-}
-
-calc_FPR_and_TPR_latent <- function(p.value, truth, threshold){
-  pred_equal <- truth[p.value > threshold & p.value < (1 - threshold)]
-  
-  TN <- sum(pred_equal == "equal")
-  
-  pred_sup <- truth[p.value < (threshold)]
-  
-  pred_pel <- truth[p.value > (1 - threshold)]
-  
-  TP = sum(pred_sup == "sup") + sum(pred_pel == "pel")
-  
-  TN_equal = sum(equal_gene_p.value > (threshold / 2) & equal_gene_p.value < (1 - (threshold / 2)), na.rm = TRUE)
-  FP_equal = sum(truth == "equal" & !is.na(p.value)) - TN_equal
-  
-  TP_sup = sum(sup_gene_p.value >= (1 - threshold), na.rm = TRUE)
-  FN_sup = sum(truth == "sup"& !is.na(p.value)) - TP_sup
-  
-  TP_pel = sum(pel_gene_p.value <= threshold, na.rm = TRUE)
-  FN_pel = sum(truth == "pel"& !is.na(p.value)) - TP_pel
-  
-  tibble(threshold, true_positive = (TP_pel + TP_sup) / sum(truth != "equal"),
-         false_positive = FP_equal / sum(truth == "equal"))
-}
-
-calc_ROC_values <- function(p.value, foldchange, truth, latent = FALSE){
-  if(latent){
-    tibble(threshold = seq(0,1,0.05)) %>%
-      group_by(threshold) %>%
-      summarise(calc_FPR_and_TPR_latent(p.value, truth, threshold))
-  }
-  else{
-    tibble(threshold = seq(0,1,0.05)) %>%
-      group_by(threshold) %>%
-      summarise(calc_FPR_and_TPR(p.value, foldchange, truth, threshold))}
-}
-  
-```
-
-```{r compare-models-single-condition}
-detect_diff_exp_DESeq <- DESeq_model_results %>%
-  dplyr::select(gene_name, log2FoldChange, pvalue) %>%
-  filter(pvalue < 0.05)
-
-detect_diff_exp_latent <- latent_model_results %>%
-  dplyr::select(gene_name, ratio, p.value) %>%
-  filter(p.value < 0.025 | p.value > 0.975) %>%
-  transmute(gene_name, log2FoldChange = log2(ratio), pvalue = p.value)
-
-detect_diff_exp_DESeq_skewed <- DESeq_model_results_skewed %>%
-  dplyr::select(gene_name, log2FoldChange, pvalue) %>%
-  filter(pvalue < 0.05)
-
-detect_diff_exp_latent_skewed <- latent_model_results_skewed %>%
-  dplyr::select(gene_name, ratio, p.value) %>%
-  filter(p.value < 0.025 | p.value > 0.975) %>%
-  transmute(gene_name, log2FoldChange = log2(ratio), pvalue = p.value)
-
-summary <- tibble(TP_DESeq = sum(((detect_diff_exp_DESeq$gene_name > 150 &
-                                     detect_diff_exp_DESeq$gene_name <= 225 &
-                                     detect_diff_exp_DESeq$log2FoldChange > 0)) |
-                                   (detect_diff_exp_DESeq$gene_name > 225 &
-                                      detect_diff_exp_DESeq$log2FoldChange < 0)),
-                  FP_DESeq = length(detect_diff_exp_DESeq$gene_name) - TP_DESeq,
-                  TP_latent = sum((detect_diff_exp_latent$gene_name > 150 &
-                                     detect_diff_exp_latent$gene_name <= 225) |
-                                   (detect_diff_exp_latent$gene_name > 225)),
-                  FP_latent = length(detect_diff_exp_latent$gene_name) - TP_latent,
-                  TP_DESeq_skewed = sum(((detect_diff_exp_DESeq_skewed$gene_name <= 280 &
-                                     detect_diff_exp_DESeq_skewed$log2FoldChange > 0)) |
-                                   (detect_diff_exp_DESeq_skewed$gene_name > 280 &
-                                      detect_diff_exp_DESeq_skewed$log2FoldChange < 0)),
-                  FP_DESeq_skewed = length(detect_diff_exp_DESeq_skewed$gene_name) - TP_DESeq_skewed,
-                  TP_latent_skewed = sum((detect_diff_exp_latent_skewed$gene_name <= 280) |
-                                   (detect_diff_exp_latent_skewed$gene_name > 280)),
-                  FP_latent_skewed = length(detect_diff_exp_latent_skewed$gene_name) - TP_latent_skewed)
-                  
-
-summary
 ```
 
 ```{r compare-models-multi-condition}
@@ -138,27 +33,31 @@ simulated_groundtruth <- expand_conditions %>%
     simulate_skewed_multi_condition_fractions %>%
       pivot_longer(c("sup_frac", "pel_frac"), names_to = "fraction", values_to = "proportion_B") %>%
       dplyr::rename(condition_B = condition)) %>%
+  group_by(gene_name, condition_A, condition_B) %>%
+  summarise(sup_pel_A = proportion_A[1]/ proportion_A[2], sup_pel_B = proportion_B[1]/ proportion_B[2], .groups = "drop") %>%
   transmute(gene_name,
             condition_A,
             condition_B,
-            fraction = str_remove(fraction, "_frac"),
-            true_ratio  = proportion_A/proportion_B,
-            diff_condition_A = (true_ratio) > 1,
-            diff_condition_B = (true_ratio) < 1)
+            true_ratio = log2(sup_pel_A/sup_pel_B),
+            diff_condition_B = true_ratio > 1,
+            diff_condition_A = true_ratio < 1)
 
 # calc DESeq2 decisions
 DESeq2_model_pred_with_ground_truth_multi_condition <- DESeq2_model_multi_condition_results %>%
-  mutate(condition_A_frac = (pvalue < 0.1) & (log2FoldChange > 0),
-         condition_B_frac = (pvalue < 0.1) & (log2FoldChange < 0)) %>%
-  select(-baseMean, log2FoldChange) %>%
-  inner_join(simulated_groundtruth)
+  mutate(condition_B_sup_frac = (p.adjust(pvalue, method = "fdr") < 0.05) & (log2FoldChange > 0),
+         condition_A_sup_frac = (p.adjust(pvalue, method = "fdr") < 0.05) & (log2FoldChange < 0)) %>%
+  dplyr::select(-baseMean, log2FoldChange) %>%
+  inner_join(simulated_groundtruth) %>%
+  mutate(true_positive = (condition_A_sup_frac == diff_condition_A) & (condition_B_sup_frac == diff_condition_B))
 
 # calc raw scale factors with DESeq2 decisions
-raw_model_pred_with_ground_truth_multi_condition <- DESeq2_with_raw_model_results %>%
-  mutate(condition_A_frac = (pvalue < 0.1) & (log2FoldChange > 0),
-         condition_B_frac = (pvalue < 0.1) & (log2FoldChange < 0)) %>%
+raw_model_pred_with_ground_truth_multi_condition <- DESeq2_with_edward_model_results %>%
+  mutate(gene_name = as.integer(gene_name),
+         condition_B_sup_frac = (p.adjust(pvalue, method = "fdr") < 0.05) & (log2FoldChange > 0),
+         condition_A_sup_frac = (p.adjust(pvalue, method = "fdr") < 0.05) & (log2FoldChange < 0)) %>%
   select(-baseMean, log2FoldChange) %>%
-  inner_join(simulated_groundtruth)
+  inner_join(simulated_groundtruth) %>%
+  mutate(true_positive = (condition_A_sup_frac == diff_condition_A) & (condition_B_sup_frac == diff_condition_B))
 
 # calc latent model decisions
 
@@ -230,37 +129,33 @@ multi_condition_model_comparison <- tibble(
 ```
 
 ```{r plot-results}
-multi_condition_plot_data <- latent_model_pred_with_ground_truth_multi_condition %>%
-  transmute(gene_name, 
-            condition_AB = str_c("Con ", condition_A, " vs Con ", condition_B),
-            fraction,
-            true_ratio,
-            log2FoldChange = log2(median_A / median_B),
-            method = "Latent",
-            Significant = condition_A_frac | condition_B_frac) %>%
-  bind_rows(raw_model_pred_with_ground_truth_multi_condition %>%
+multi_condition_plot_data <- raw_model_pred_with_ground_truth_multi_condition %>%
               transmute(gene_name,
                         condition_AB = str_c("Con ", condition_A, " vs Con ", condition_B),
-                        fraction,
                         true_ratio,
                         log2FoldChange,
                         method = "Original",
-                        Significant = condition_A_frac | condition_B_frac)) %>%
+                        true_positive) %>%
   bind_rows(DESeq2_model_pred_with_ground_truth_multi_condition %>%
               transmute(gene_name,
                         condition_AB = str_c("Con ", condition_A, " vs Con ", condition_B),
-                        fraction,
                         true_ratio,
                         log2FoldChange,
                         method = "DESeq",
-                        Significant = condition_A_frac | condition_B_frac)) %>%
-  filter(!is.na(Significant))
+                        true_positive)) %>%
+  filter(!is.na(true_positive))
 
-ggplot(multi_condition_plot_data %>%
-         filter(fraction == "pel")) +
-  geom_point(aes(x = log2(true_ratio), y = log2FoldChange, colour = Significant), alpha = 0.3) +
+ggplot(multi_condition_plot_data) +
+  geom_point(aes(x = true_ratio, y = log2FoldChange, colour = true_positive), alpha = 0.3) +
   geom_abline(slope = 1, intercept = 0, colour = "black", alpha = 0.7) +
   facet_grid(condition_AB~method) +
   coord_equal() +
   theme_bw()
+
+ggplot(DESeq2_model_pred_with_ground_truth_multi_condition) +
+  geom_point(aes(x = true_ratio, y = log2FoldChange, colour = true_positive), alpha = 1) +
+  facet_wrap(~paste0(condition_A, " ", condition_B)) +
+  coord_equal() +
+  theme_bw() +
+  geom_abline(slope = 1, intercept = 0)
 ```
