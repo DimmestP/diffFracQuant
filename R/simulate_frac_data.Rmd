@@ -12,7 +12,7 @@ library(here)
 
 num_gene = 300
 phi = 100
-num_rep = 3
+num_rep = 2
 num_condition = 3
 noisy_neg_bin_dispersion = 20
 
