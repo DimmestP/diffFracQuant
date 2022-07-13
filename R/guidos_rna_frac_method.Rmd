@@ -23,13 +23,14 @@ total_sup_pel_iserman_et_al_counts <- read_tsv(here("data/input/Iserman_et_al_da
             sup = SN,
             rep,
             total) %>%
-  filter(condition %in% c("IDR_30C", "IDR_42C", "WT_30C", "WT_42C"))
-
-total_sup_pel_iserman_et_al_counts_subsample <- total_sup_pel_iserman_et_al_counts %>%
+  filter(condition %in% c("IDR_30C", "IDR_42C", "WT_30C", "WT_42C")) %>%
   filter(pel > 0 | sup > 0 | total > 0) %>%
   group_by(gene_name) %>%
   filter(length(gene_name) == 8) %>%
-  ungroup() %>%
+  ungroup()
+
+
+total_sup_pel_iserman_et_al_counts_subsample <- total_sup_pel_iserman_et_al_counts %>%
   filter(gene_name %in% sample(unique(gene_name), 500))
 
 ```
@@ -77,9 +78,9 @@ data {
 }
 parameters {
   // Normalising factors
-  real<lower=0> tot_scale_factor[NCON, NREP];
-  real<lower=0> sup_scale_factor[NCON, NREP];
-  real<lower=0> pel_scale_factor[NCON, NREP];
+  //real<lower=0> tot_scale_factor[NCON, NREP];
+  //real<lower=0, upper = 1> sup_scale_factor[NCON, NREP];
+  //real<lower=0> pel_scale_factor[NCON, NREP];
 
   // latent counts
   vector<lower=0>[NRNA] sup_latent[NCON];
@@ -96,9 +97,9 @@ model{
 for(con in 1:NCON){
     lognorm_alpha[con] ~ normal(7,2);
     lognorm_beta[con] ~ normal(2,1);
-    tot_scale_factor[con] ~ normal(10, 0.5);
-    pel_scale_factor[con] ~ normal(10, 0.5);
-    sup_scale_factor[con] ~ normal(10, 0.5);
+    //tot_scale_factor[con] ~ normal(10, 0.5);
+    //pel_scale_factor[con] ~ normal(10, 0.5);
+    //sup_scale_factor[con] ~ beta(3, 3);
    
     phi[con] ~ normal(100, 10);
 
@@ -109,17 +110,15 @@ for(con in 1:NCON){
 
     for(rep in 1:NREP){
           // fractions
-          sup_obs[con, rep] ~ neg_binomial_2(sup_scale_factor[con, rep] *
-                                                  sup_latent[con],
+          sup_obs[con, rep] ~ neg_binomial_2(sup_latent[con],
                                                 phi[con, 2]);
                                               
-        pel_obs[con, rep] ~ neg_binomial_2(pel_scale_factor[con, rep] *
-                                                  pel_latent[con],
+        pel_obs[con, rep] ~ neg_binomial_2(pel_latent[con],
                                                 phi[con, 3]);
   
         // count distn negative binomial with specified means
         // total
-        tot_obs[con, rep] ~ neg_binomial_2(tot_scale_factor[con, rep] * (sup_latent[con] + pel_latent[con]), phi[con, 1]);
+        tot_obs[con, rep] ~ neg_binomial_2(sup_latent[con] + pel_latent[con], phi[con, 1]);
       }
   }
 }',
@@ -144,7 +143,6 @@ extract_summary_statistics <- function(stan_model){
           summarise_draws(),
         scale_factors = stan_model %>% 
           spread_draws(tot_scale_factor[condition, rep],
-		       pel_scale_factor[condition, rep],
                        sup_scale_factor[condition, rep]) %>%
           summarise_draws(),
         prior_parameters = stan_model %>% 
