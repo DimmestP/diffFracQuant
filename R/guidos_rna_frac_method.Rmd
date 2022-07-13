@@ -144,7 +144,8 @@ extract_summary_statistics <- function(stan_model){
           summarise_draws(),
         scale_factors = stan_model %>% 
           spread_draws(tot_scale_factor[condition, rep],
-                       sup_scale_factor[condition, rep]) %>%
+                       sup_scale_factor[condition, rep],
+                       pel_scale_factor[condition, rep]) %>%
           summarise_draws(),
         prior_parameters = stan_model %>% 
           spread_draws(lognorm_alpha[condition, fraction],
