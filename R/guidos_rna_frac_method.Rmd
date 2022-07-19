@@ -122,6 +122,12 @@ for(con in 1:NCON){
         tot_obs[con, rep] ~ neg_binomial_2(tot_scale_factor[con, rep] * (sup_latent[con] + pel_latent[con]), phi[con, 1]);
       }
   }
+}
+generated quantities{
+	real<lower=0> tot_obs_sim[NCON, NRNA]; 
+	for(con in 1:NCON){
+		tot_obs_sim[con] = neg_binomial_2_rng(tot_scale_factor[con, 1] * (sup_latent[con] + pel_latent[con]), phi[con, 1]);
+	}
 }',
 data=stan_dat,chains = 1,iter = 10)
 }
