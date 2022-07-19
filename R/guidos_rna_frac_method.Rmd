@@ -189,7 +189,7 @@ test_diff_condition <- function(stan_model){
   
   summary_stats_ratio <- latent_count_samples %>%
           summarise_draws() %>% 
-    select(gene_name, condition, variable, median) %>% 
+    dplyr::select(gene_name, condition, variable, median) %>% 
     group_by(gene_name, condition) %>% 
     summarise(ratio = median[1]/median[2])
   

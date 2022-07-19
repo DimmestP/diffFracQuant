@@ -226,7 +226,7 @@ total_sup_pel_simulated_noisy_counts_skewed_multi_condition <- total_sup_pel_sim
 
 ```
 
-```{r output-sim-counts}
+```{r output-sim-counts, eval=FALSE}
 write_tsv(total_sup_pel_simulated_noisy_counts, here("data/output/simulated_counts/total_sup_pel_simulated_noisy_counts.tsv"))
 
 write_tsv(total_sup_pel_simulated_mean_counts, here("data/output/simulated_counts/total_sup_pel_simulated_noiseless_counts.tsv"))
