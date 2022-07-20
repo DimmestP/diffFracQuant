@@ -79,6 +79,7 @@ data {
 }
 parameters {
   // Normalising factors
+  real<lower=0> scale_factor_mean;
   real<lower=0> tot_scale_factor[NCON, NREP];
   real<lower=0> sup_scale_factor[NCON, NREP];
   real<lower=0> pel_scale_factor[NCON, NREP];
@@ -98,9 +99,10 @@ model{
 for(con in 1:NCON){
     lognorm_alpha[con] ~ normal(7,2);
     lognorm_beta[con] ~ normal(2,1);
-    tot_scale_factor[con] ~ normal(10, 0.5);
-    pel_scale_factor[con] ~ normal(10, 0.5);
-    sup_scale_factor[con] ~ normal(10, 0.5);
+    scale_factor_mean ~ normal(10, 0.5);
+    tot_scale_factor[con] ~ normal(scale_factor_mean, 0.1);
+    pel_scale_factor[con] ~ normal(scale_factor_mean, 0.1);
+    sup_scale_factor[con] ~ normal(scale_factor_mean, 0.1);
    
     phi[con] ~ normal(100, 10);
 
