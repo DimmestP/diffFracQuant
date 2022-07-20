@@ -235,5 +235,5 @@ write_tsv(total_sup_pel_simulated_noisy_counts_skew, here("data/output/simulated
 
 write_tsv(total_sup_pel_simulated_noisy_counts_skewed_multi_condition, here("data/output/simulated_counts/total_sup_pel_simulated_noisy_skewed_multi_condition_counts.tsv"))
 
-write_tsv(sup_pel_simulated_fractions_skewed_multi_condition, here("data/output/simulated_counts/sup_pel_simulated_fractions.tsv"))
+write_tsv(total_sup_pel_simulated_mean_counts_skewed_multi_condition, here("data/output/simulated_counts/sup_pel_noiseless_fractions.tsv"))
 ```
