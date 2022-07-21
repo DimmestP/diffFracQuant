@@ -93,7 +93,7 @@ parameters {
   real<lower=0> lognorm_beta[NCON, 2];
   
   // dispersion parameter for counts
-  real<lower=0> phi[NCON, 3];
+  real<lower=0> phi[3];
 }
 model{
 for(con in 1:NCON){
@@ -104,7 +104,7 @@ for(con in 1:NCON){
     pel_scale_factor[con] ~ normal(scale_factor_mean, 0.1);
     sup_scale_factor[con] ~ normal(scale_factor_mean, 0.1);
    
-    phi[con] ~ normal(100, 10);
+    phi ~ normal(100, 10);
 
     // latent counts
     sup_latent[con] ~ lognormal(lognorm_alpha[con, 1], lognorm_beta[con, 1]);
@@ -114,15 +114,15 @@ for(con in 1:NCON){
     for(rep in 1:NREP){
           // fractions
           sup_obs[con, rep] ~ neg_binomial_2(sup_scale_factor[con, rep] * sup_latent[con],
-                                                phi[con, 2]);
+                                                phi[2]);
                                               
         pel_obs[con, rep] ~ neg_binomial_2(pel_scale_factor[con, rep] * pel_latent[con],
-                                                phi[con, 3]);
+                                                phi[3]);
   
         // count distn negative binomial with specified means
         // total
         tot_obs[con, rep] ~ neg_binomial_2(tot_scale_factor[con, rep] * (sup_latent[con] + pel_latent[con]),
-					 	phi[con, 1]);
+					 	phi[1]);
       }
   }
 }
@@ -134,8 +134,8 @@ generated quantities{
 		sup_obs_sim[con] = neg_binomial_2_rng(sup_scale_factor[con, 2] * sup_latent[con],
                                                 phi[con, 2]);
 
-        	pel_obs_sim[con] = neg_binomial_2_rng(pel_scale_factor[con, 3] * pel_latent[con],
-                                                phi[con, 3]);
+        	pel_obs_sim[con] = neg_binomial_2_rng(pel_scale_factor[con, 2] * pel_latent[con],
+                                                phi[con, 2]);
 
 		tot_obs_sim[con] = neg_binomial_2_rng(tot_scale_factor[con, 1] * (sup_latent[con] + pel_latent[con]),
 						phi[con, 1]);
