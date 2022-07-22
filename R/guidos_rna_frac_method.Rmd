@@ -30,8 +30,7 @@ total_sup_pel_iserman_et_al_counts <- read_tsv(here("data/input/Iserman_et_al_da
   ungroup()
 
 
-total_sup_pel_iserman_et_al_counts_subsample <- total_sup_pel_iserman_et_al_counts %>%
-  filter(gene_name %in% sample(unique(gene_name), 500))
+total_sup_pel_iserman_et_al_counts_subsample <- read_tsv(here("data/output/simulated_counts/total_sup_pel_iserman_et_al_counts_subsample.tsv"))
 
 total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_skewed_multi_condition_counts.tsv"))
 ```
@@ -79,66 +78,73 @@ data {
 }
 parameters {
   // Normalising factors
-  real<lower=0> scale_factor_mean;
-  real<lower=0> tot_scale_factor[NCON, NREP];
-  real<lower=0> sup_scale_factor[NCON, NREP];
-  real<lower=0> pel_scale_factor[NCON, NREP];
+  real scale_factor_mean;
+  //real tot_scale_factor[NCON, NREP];
+  real sup_scale_factor[NCON, NREP];
+  real pel_scale_factor[NCON, NREP];
 
   // latent counts
-  vector<lower=0>[NRNA] sup_latent[NCON];
-  vector<lower=0>[NRNA] pel_latent[NCON];
+  vector[NRNA] sup_latent[NCON];
+  vector[NRNA] pel_latent[NCON];
   
-  // latent count gamma prior parameters
-  real<lower=0> lognorm_alpha[NCON, 2];
-  real<lower=0> lognorm_beta[NCON, 2];
+  // latent count prior parameters
+  real norm_alpha[NCON, 2];
+  real<lower=0> norm_beta[NCON, 2];
   
   // dispersion parameter for counts
   real<lower=0> phi[3];
 }
 model{
 for(con in 1:NCON){
-    lognorm_alpha[con] ~ normal(7,2);
-    lognorm_beta[con] ~ normal(2,1);
-    scale_factor_mean ~ normal(10, 0.5);
-    tot_scale_factor[con] ~ normal(scale_factor_mean, 0.1);
+   vector[NRNA] temp_sum;
+
+    norm_alpha[con] ~ normal(7,2);
+    norm_beta[con] ~ normal(2,1);
+    scale_factor_mean ~ normal(0, 0.5);
+    //tot_scale_factor[con] ~ normal(scale_factor_mean, 0.1);
     pel_scale_factor[con] ~ normal(scale_factor_mean, 0.1);
     sup_scale_factor[con] ~ normal(scale_factor_mean, 0.1);
    
     phi ~ normal(100, 10);
 
     // latent counts
-    sup_latent[con] ~ lognormal(lognorm_alpha[con, 1], lognorm_beta[con, 1]);
-    pel_latent[con] ~ lognormal(lognorm_alpha[con, 2], lognorm_beta[con, 2]);
+    sup_latent[con] ~ normal(norm_alpha[con, 1], norm_beta[con, 1]);
+    pel_latent[con] ~ normal(norm_alpha[con, 2], norm_beta[con, 2]);
     
 
     for(rep in 1:NREP){
           // fractions
-          sup_obs[con, rep] ~ neg_binomial_2(sup_scale_factor[con, rep] * sup_latent[con],
+          sup_obs[con, rep] ~ neg_binomial_2_log(sup_scale_factor[con, rep] + sup_latent[con],
                                                 phi[2]);
                                               
-        pel_obs[con, rep] ~ neg_binomial_2(pel_scale_factor[con, rep] * pel_latent[con],
+        pel_obs[con, rep] ~ neg_binomial_2_log(pel_scale_factor[con, rep] + pel_latent[con],
                                                 phi[3]);
-  
+  	
+	temp_sum = exp(pel_latent[con]) + exp(sup_latent[con]);
+
         // count distn negative binomial with specified means
         // total
-        tot_obs[con, rep] ~ neg_binomial_2(tot_scale_factor[con, rep] * (sup_latent[con] + pel_latent[con]),
+        tot_obs[con, rep] ~ neg_binomial_2(temp_sum,
 					 	phi[1]);
       }
   }
 }
 generated quantities{
+	vector[NRNA] temp_sum;
         real<lower=0> sup_obs_sim[NCON, NRNA];
         real<lower=0> pel_obs_sim[NCON, NRNA];
 	real<lower=0> tot_obs_sim[NCON, NRNA]; 
 	for(con in 1:NCON){
-		sup_obs_sim[con] = neg_binomial_2_rng(sup_scale_factor[con, 2] * sup_latent[con],
-                                                phi[con, 2]);
+		sup_obs_sim[con] = neg_binomial_2_log_rng(sup_scale_factor[con, 2] + sup_latent[con],
+                                                phi[2]);
 
-        	pel_obs_sim[con] = neg_binomial_2_rng(pel_scale_factor[con, 2] * pel_latent[con],
-                                                phi[con, 2]);
+        	pel_obs_sim[con] = neg_binomial_2_log_rng(pel_scale_factor[con, 2] + pel_latent[con],
+                                                phi[3]);
 
-		tot_obs_sim[con] = neg_binomial_2_rng(tot_scale_factor[con, 1] * (sup_latent[con] + pel_latent[con]),
-						phi[con, 1]);
+		temp_sum = exp(pel_latent[con]) + exp(sup_latent[con]);
+
+		tot_obs_sim[con] = neg_binomial_2_rng(temp_sum,
+						phi[1]);
 	}
 }',
 data=stan_dat,chains = 1,iter = 10)
