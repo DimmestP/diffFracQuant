@@ -13,3 +13,9 @@ Notes:
 - How do I set up the model to deal with replicates? Is tot count rep1 related to pel/sup rep1 or should I pair them with rep2/rep3 counts?
 - I ran to model only determining one scale factor (to avoid collinearity), but it didn't seem to have an effect.
 - I changes the simulated data and model so the I could input multiple replicates
+
+22nd Jul
+- The bayesian model of differential fractionation successfully works on simulated datasets and gives fewer false positives and false negatives than DESeq2 and a basic ratio comparison
+- I have begun running the model on a experimental data set created by iserman et al (this work is contained in the iserman_dataset branch)
+- Further work to be completed: add linear terms to latent counts to predict condition/strain effects
+- scale factors are not correlating with total reads for the iserman dataset. Total and sup scale factors group together and pel counts cluster at a significantly higher value. I have changed the negative binomials to log_neg_bin as I think the scale factors are being warped by the selective behaviour (on highly expressed genes) in the pel counts. However, you cannot do a linear addition of pel_latent and sup_latent in log space. If I transform pel_latent and sup_latent to linear space to add them does that mean I have to account for the non_linear transformation in the log likelihood? But there is no inverse for this transformation so I can’t create a jacobian to do this transformation. Currently I leave the tot neg bin distribution (not logged) will this cause an issue? 
