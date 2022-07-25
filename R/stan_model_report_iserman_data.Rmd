@@ -1,0 +1,174 @@
+---
+title: "Iserman Data Stan Model Report"
+author: "Sam Haynes"
+date: '2022-07-20'
+output: html_document
+---
+
+To confirm that the stan model (without linear term on latent counts) is performing correctly I compare several metrics:
+
+- noisy tot, pel, and sup counts from model to iserman counts as a posterior check
+- noiseless latent pel and sup counts to mean counts across rep
+- scale factors vs total reads per run
+- fractions
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(here)
+library(tidybayes)
+
+load("~/Documents/PhD/diff_frac_project/diffFracQuant/iserman_data_stan_model_log.RData")
+
+total_sup_pel_iserman_noisy_counts <- read_tsv(here("total_sup_pel_iserman_et_al_counts_subsample.tsv")) %>%
+  mutate(condition = ifelse(condition == "IDR_30C", 1,
+                            ifelse(condition == "IDR_42C", 2,
+                                   ifelse(condition == "WT_30C", 3, 4))),
+         gene_name = rep(1:500, each = 8))
+
+```
+
+```{r inspect-raw-data}
+ggplot(total_sup_pel_iserman_noisy_counts %>% 
+         pivot_longer(cols = c("pel", "sup"), names_to = "frac", values_to = "count")) + 
+  geom_point(aes(x = log(total), y = log(count), colour = frac)) + 
+  facet_grid(rep~condition) +
+  geom_abline(slope = 1, intercept = 0)
+
+ggplot(total_sup_pel_iserman_noisy_counts %>% 
+         pivot_longer(cols = c("total", "pel", "sup"), names_to = "frac", values_to = "counts") %>%
+         group_by(gene_name, condition, frac) %>% 
+         summarise(fano = var(counts) / mean(counts))) + 
+  geom_histogram(aes(x = log(fano), fill = frac), position = "identity", alpha = 0.5) +
+  facet_wrap(~condition)
+```
+
+```{r posterior-vs-total-reads}
+total_count_iserman <- total_sup_pel_iserman_noisy_counts %>% 
+  group_by(condition, rep) %>%
+  summarise(pel = sum(pel), sup = sum(sup), total = sum(total)) %>%
+  rename(tot = total) %>%
+  pivot_longer(cols = c("sup", "pel", "tot"),
+               names_to = "fraction",
+               values_to = "scale_factor")%>%
+  ungroup() %>%
+  mutate(src = "iserman")
+
+scale_factors_plot_data <- stan_count_model %>%
+  spread_draws(sup_scale_factor[condition, rep],
+               pel_scale_factor[condition, rep]) %>%
+  summarise_draws() %>% 
+  transmute(condition,
+            rep,
+            scale_factor=median,
+            fraction = str_remove(variable, "_scale_factor"),
+            src="stan") %>%
+  bind_rows(stan_count_model %>%
+  spread_draws(tot_scale_factor[condition, rep]) %>%
+  summarise_draws() %>% 
+  transmute(condition,
+            rep,
+            scale_factor=log(median),
+            fraction = str_remove(variable, "_scale_factor"),
+            src="stan")) %>%
+  bind_rows(total_count_iserman) %>%
+  pivot_wider(names_from = src, values_from = scale_factor)
+
+ggplot(scale_factors_plot_data) + 
+  geom_point(aes(x=log(iserman), y=stan, colour = fraction, shape = as.factor(rep))) + 
+  theme_bw() +
+  coord_equal()
+```
+
+```{r latent-vs-mean-iserman-counts}
+latent_counts <- stan_count_model %>%
+  spread_draws(sup_latent[condition,gene_name],
+               pel_latent[condition,gene_name]) %>%
+  summarise_draws() %>% 
+  transmute(condition,
+            gene_name,
+            counts=median,
+            fraction = str_remove(variable, "_latent"),
+            src="stan")
+
+plot_data_latent <- total_sup_pel_iserman_noisy_counts %>%
+  dplyr::select(-total) %>%
+  group_by(gene_name, condition) %>%
+  summarise(pel = mean(pel), sup = mean(sup)) %>%
+  ungroup() %>%
+  pivot_longer(cols = c(pel, sup), names_to = "fraction", values_to = "counts") %>% 
+  mutate(src="iserman") %>%
+  bind_rows(latent_counts) %>%
+  pivot_wider(names_from = src, values_from = counts)
+
+ggplot(plot_data_latent) + 
+  geom_point(aes(x=log(iserman), y=stan), alpha = 0.1) + 
+  facet_grid(fraction~condition) +
+  theme_bw() +
+  geom_abline(slope = 1, intercept = 0)
+```
+
+```{r post-posterior-vs-noisy-counts}
+
+pps_obs <-stan_count_model %>%
+  spread_draws(tot_obs_sim[condition,gene_name],
+               sup_obs_sim[condition,gene_name],
+               pel_obs_sim[condition,gene_name]) %>%
+  summarise_draws()
+
+plot_data_pps <- pps_obs %>% 
+  transmute(condition,
+            gene_name,
+            counts=median,
+            fraction = str_remove(variable, "_obs_sim"),
+            src="stan") %>%
+  bind_rows(total_sup_pel_iserman_noisy_counts %>% 
+              rename(tot = total) %>% 
+              pivot_longer(cols = c(pel, sup, tot), names_to = "fraction", values_to = "counts") %>% 
+              filter((rep == 1 & fraction == "tot")|
+                       (rep == 2 & fraction == "pel")|
+                       (rep == 2 & fraction == "sup")) %>% 
+              transmute(condition, gene_name, fraction, counts, src="iserman"))
+
+ggplot(plot_data_pps) + 
+  geom_histogram(aes(x=log(counts), colour = src, fill = src),
+                 alpha = 0.3,
+                 position="identity") + 
+  facet_grid(fraction~condition)
+
+ggplot(plot_data_pps %>%
+         pivot_wider(names_from = "src", values_from = "counts")) + 
+  geom_point(aes(x=log(iserman), y=log(stan)), alpha = 0.1) + 
+  facet_grid(fraction~condition) +
+  theme_bw() +
+  geom_abline(slope = 1, intercept = 0)
+```
+```{r post-posterior-frac-vs-iserman-frac}
+plot_data_frac <-  latent_counts %>%
+  pivot_wider(names_from = fraction, values_from = "counts") %>%
+  transmute(gene_name, condition, src, fraction = pel - sup) %>%
+  bind_rows(total_sup_pel_iserman_noisy_counts %>%
+              group_by(gene_name, condition) %>%
+              summarise(fraction = mean(pel) / mean(sup),
+                     src = "iserman") %>%
+              ungroup() %>%
+              dplyr::select(gene_name,
+                            condition,
+                            fraction,
+                            src))
+
+ggplot(plot_data_frac) + 
+  geom_histogram(aes(x=log(fraction), colour = src, fill = src),
+                 alpha = 0.3,
+                 position="identity") + 
+  facet_wrap(~condition, ncol = 1) +
+  lims(x = c(-6, 6))
+
+ggplot(plot_data_frac %>%
+         pivot_wider(names_from = "src", values_from = "fraction")) + 
+  geom_point(aes(x=log(iserman), y=stan), alpha = 0.1) + 
+  facet_wrap(~condition) +
+  theme_bw() +
+  geom_abline(slope = 1, intercept = 0)
+```

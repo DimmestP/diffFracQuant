@@ -12,7 +12,7 @@ library(here)
 
 num_gene = 300
 phi = 100
-num_rep = 2
+num_rep = 3
 num_condition = 3
 noisy_neg_bin_dispersion = 20
 
@@ -236,4 +236,7 @@ write_tsv(total_sup_pel_simulated_noisy_counts_skew, here("data/output/simulated
 write_tsv(total_sup_pel_simulated_noisy_counts_skewed_multi_condition, here("data/output/simulated_counts/total_sup_pel_simulated_noisy_skewed_multi_condition_counts.tsv"))
 
 write_tsv(total_sup_pel_simulated_mean_counts_skewed_multi_condition, here("data/output/simulated_counts/sup_pel_noiseless_fractions.tsv"))
+
+write_tsv(tot_sup_pel_scale_factor_multi_condition,
+          here("data/output/simulated_counts/tot_sup_pel_scale_factor_multi_condition.tsv"))
 ```

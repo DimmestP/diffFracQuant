@@ -1,0 +1,150 @@
+---
+title: "Simulated Data Stan Model Report"
+author: "Sam Haynes"
+date: '2022-07-20'
+output: html_document
+---
+
+To confirm that the stan model (without linear term on latent counts) is performing correctly I compare several metrics:
+
+- noisy tot, pel, and sup counts from model to simulation as a posterior check
+- noiseless latent, pel, and sup counts to simulation
+- scale factors 
+- fractions
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(here)
+library(tidybayes)
+
+load("~/Documents/PhD/diff_frac_project/diffFracQuant/simulated_data_log_stan_model.RData")
+
+total_sup_pel_simulated_noisy_counts <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_skewed_multi_condition_counts.tsv"))
+
+sup_pel_simulated_noiseless_counts <- read_tsv(here("data/output/simulated_counts/sup_pel_noiseless_fractions.tsv"))
+
+tot_sup_pel_scale_factor_multi_condition <- read_tsv(here("data/output/simulated_counts/tot_sup_pel_scale_factor_multi_condition.tsv"))
+
+```
+
+```{r posterior-vs-sim-scale-factors}
+scale_factors_plot_data <- stan_count_model %>%
+  spread_draws(sup_scale_factor[condition, rep],
+               pel_scale_factor[condition, rep]) %>%
+  summarise_draws() %>% 
+  transmute(condition,
+            rep,
+            scale_factor=exp(median),
+            fraction = str_remove(variable, "_scale_factor"),
+            src="stan") %>%
+  bind_rows(stan_count_model %>%
+  spread_draws(tot_scale_factor[condition, rep]) %>%
+  summarise_draws() %>% 
+  transmute(condition,
+            rep,
+            scale_factor=median,
+            fraction = str_remove(variable, "_scale_factor"),
+            src="stan")) %>%
+  bind_rows(tot_sup_pel_scale_factor_multi_condition %>%
+              rename(tot = total) %>%
+              pivot_longer(cols = c("sup", "pel", "tot"),
+                           names_to = "fraction",
+                           values_to = "scale_factor")%>%
+            mutate(src = "sim")) %>%
+  pivot_wider(names_from = src, values_from = scale_factor)
+
+ggplot(scale_factors_plot_data) + 
+  geom_point(aes(x=sim, y=stan, colour = fraction)) + 
+  theme_bw() +
+  geom_abline(slope = 1, intercept = 0) +
+  coord_equal()
+
+```
+
+```{r latent-vs-noiseless-sim-counts}
+latent_counts <- stan_count_model %>%
+  spread_draws(sup_latent[condition,gene_name],
+               pel_latent[condition,gene_name]) %>%
+  summarise_draws() %>% 
+  transmute(condition,
+            gene_name,
+            counts=median,
+            fraction = str_remove(variable, "_latent"),
+            src="stan")
+
+plot_data_latent <- sup_pel_simulated_noiseless_counts %>%
+  dplyr::select(-total, -sup_frac, -pel_frac) %>% 
+  pivot_longer(cols = c(pel, sup), names_to = "fraction", values_to = "counts") %>% 
+  mutate(src="sim") %>%
+  bind_rows(latent_counts) %>%
+  pivot_wider(names_from = src, values_from = counts)
+
+ggplot(plot_data_latent) + 
+  geom_point(aes(x=log(sim), y=stan), alpha = 0.1) + 
+  facet_grid(fraction~condition) +
+  theme_bw() +
+  geom_abline(slope = 1, intercept = 0)
+```
+
+```{r post-posterior-vs-noisy-counts}
+
+pps_obs <-stan_count_model %>%
+  spread_draws(tot_obs_sim[condition,gene_name],
+               sup_obs_sim[condition,gene_name],
+               pel_obs_sim[condition,gene_name]) %>%
+  summarise_draws()
+
+plot_data_pps <- pps_obs %>% 
+  transmute(condition,gene_name,
+            counts=median,
+            fraction = str_remove(variable, "_obs_sim"),
+            src="stan") %>%
+  bind_rows(total_sup_pel_simulated_noisy_counts %>% 
+              rename(tot = total) %>% 
+              pivot_longer(cols = c(pel, sup, tot), names_to = "fraction", values_to = "counts") %>% 
+              filter((rep == 1 & fraction == "tot")|
+                       (rep == 3 & fraction == "pel")|
+                       (rep == 2 & fraction == "sup")) %>% 
+              transmute(condition, gene_name, fraction, counts, src="sim"))
+
+ggplot(plot_data_pps) + 
+  geom_histogram(aes(x=log(counts), colour = src, fill = src),
+                 alpha = 0.3,
+                 position="identity") + 
+  facet_grid(fraction~condition)
+
+ggplot(plot_data_pps %>%
+         pivot_wider(names_from = "src", values_from = "counts")) + 
+  geom_point(aes(x=log(sim), y=log(stan)), alpha = 0.1) + 
+  facet_grid(fraction~condition) +
+  theme_bw() +
+  geom_abline(slope = 1, intercept = 0)
+```
+```{r post-posterior-frac-vs-sim-frac}
+plot_data_frac <-  latent_counts %>%
+  pivot_wider(names_from = fraction, values_from = "counts") %>%
+  transmute(gene_name, condition, src, fraction = pel - sup) %>%
+  bind_rows(sup_pel_simulated_noiseless_counts %>%
+              mutate(fraction = log(pel_frac / sup_frac),
+                     src = "sim") %>%
+              dplyr::select(gene_name,
+                            condition,
+                            fraction,
+                            src))
+
+ggplot(plot_data_frac) + 
+  geom_histogram(aes(x=fraction, colour = src, fill = src),
+                 alpha = 0.3,
+                 position="identity") + 
+  facet_wrap(~condition, ncol = 1) +
+  lims(x = c(-6, 6))
+
+ggplot(plot_data_frac %>%
+         pivot_wider(names_from = "src", values_from = "fraction")) + 
+  geom_point(aes(x=sim, y=stan), alpha = 0.1) + 
+  facet_wrap(~condition) +
+  theme_bw() +
+  geom_abline(slope = 1, intercept = 0)
+```
