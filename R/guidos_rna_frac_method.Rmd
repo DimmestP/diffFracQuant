@@ -13,6 +13,8 @@ library(tidybayes)
 
 options(mc.cores = parallel::detectCores())
 
+simulated_datasets <- read_tsv(here("data/output/simulated_counts/total_sup_pel_simulated_noisy_skewed_multi_condition_counts.tsv"))
+
 total_sup_pel_iserman_et_al_counts <- read_tsv(here("data/input/Iserman_et_al_dataset/full_transcript_counts.txt")) %>%
   pivot_longer(-ensembl_gene_id, names_to = "sample", values_to = "counts") %>%
   separate(sample, "_", into = c("strain", "temperature", "rep", "fraction", NA)) %>%
@@ -201,6 +203,14 @@ test_frac_across_condition <- function(condition, ratio){
                 inner_join(tibble(condition_B = condition, ratio_B = ratio), by = "condition_B")) %>%
     group_by(condition_A, condition_B) %>%
     summarise(p.value = sum(ratio_A > ratio_B) / (length(ratio)/ length(unique(condition))), .groups = "drop")
+}
+
+one_condition_extract(stanmodel){
+stanmodel %>%                                      
+          spread_draws(sup_latent[condition, gene_name],
+                       pel_latent[condition, gene_name]) %>% summarise_draws() %>% ungroup() %>% dplyr::select(gene_name,variable,median)%>%pivot_wider(names_from="variable",values_from="median") %>% inner_join(bayesian_simulated_specific_result %>% 
+          spread_draws(sup_latent[condition, gene_name],
+                       pel_latent[condition, gene_name]) %>% group_by(gene_name) %>% summarise(pvalue = sum(sup_latent < pel_latent) / 2000) %>% ungroup()) %>% write_tsv(file = here("data/output/diff_frac_models/bayesian_simulated_specific_result.tsv"))
 }
 
 test_diff_condition <- function(stan_model){
