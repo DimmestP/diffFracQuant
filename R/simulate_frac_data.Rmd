@@ -35,6 +35,12 @@ thirty_degree_pel_rna_count <- read_tsv(here("./data/input/DAD-82.txt"),
                                                         "count")) %>%
   mutate(count = as.integer(count), src = "exp") %>%
   filter(count > 0)
+
+sample_noisy_counts <- function(mean, dispersion, rep_scale_factor){
+  rnbinom(length(mean),
+          size = dispersion,
+          mu  = mean * rep_scale_factor)
+}
 ```
 
 ```{r fit-lnorm-rna-count-model}
@@ -63,11 +69,6 @@ ggplot(thirty_degree_total_rna_count %>%
 
 ```{r balanced-simulated-frac-counts}
 set.seed(338)
-sample_noisy_counts <- function(mean, dispersion, rep_scale_factor){
-  rnbinom(length(mean),
-          size = dispersion,
-          mu  = mean * rep_scale_factor)
-}
 
 sup_pel_simulated_fractions <- tibble(gene_name = 1:num_gene,
                                       sup_frac = c(rep(0.5, num_gene/2),
@@ -181,7 +182,7 @@ total_sup_pel_simulated_noisy_counts_skew <- total_sup_pel_simulated_mean_counts
 ```
 
 ```{r skewed-three-condition-simulated-frac-counts}
-set.seed(338)
+set.seed(39)
 
 sup_pel_simulated_fractions_skewed_multi_condition <- tibble(gene_name = rep(1:num_gene,
                                                                              num_condition),

@@ -31,7 +31,8 @@ tot_sup_pel_scale_factor_multi_condition <- read_tsv(here("data/output/simulated
 
 ```{r posterior-vs-sim-scale-factors}
 scale_factors_plot_data <- stan_count_model %>%
-  spread_draws(sup_scale_factor[condition, rep],
+  spread_draws(#tot_scale_factor[condition, rep],
+               sup_scale_factor[condition, rep],
                pel_scale_factor[condition, rep]) %>%
   summarise_draws() %>% 
   transmute(condition,
@@ -39,14 +40,6 @@ scale_factors_plot_data <- stan_count_model %>%
             scale_factor=exp(median),
             fraction = str_remove(variable, "_scale_factor"),
             src="stan") %>%
-  bind_rows(stan_count_model %>%
-  spread_draws(tot_scale_factor[condition, rep]) %>%
-  summarise_draws() %>% 
-  transmute(condition,
-            rep,
-            scale_factor=median,
-            fraction = str_remove(variable, "_scale_factor"),
-            src="stan")) %>%
   bind_rows(tot_sup_pel_scale_factor_multi_condition %>%
               rename(tot = total) %>%
               pivot_longer(cols = c("sup", "pel", "tot"),
