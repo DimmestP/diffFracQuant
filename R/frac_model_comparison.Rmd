@@ -30,7 +30,9 @@ DESeq2_model_encode_results <- read_tsv(here("./data/output/diff_frac_models/DES
 
 DESeq2_model_simulated_results <- read_tsv(here("./data/output/diff_frac_models/DESeq2_simulated_counts.tsv"))
 
-Bayesian_model_simulated_random_results <- read_tsv(here("./data/output/diff_frac_models/bayesian_simulated_result.tsv"))
+Bayesian_model_simulated_results <- read_tsv(here("./data/output/diff_frac_models/bayesian_simulated_result.tsv"))
+
+Bayesian_model_encode_subsample_results <- read_tsv(here("data/output/diff_frac_models/bayesian_encode_subsample_result.tsv"))
 ```
 
 ```{r create-subsample-experimental-datasets, eval = FALSE}
@@ -54,10 +56,22 @@ chosen_encode_genes <- encode_data_sets %>%
   unique() %>%
   sample(500)
 
-encode_data_sets_subsampled <- encode_data_sets %>%
-  filter(gene_id %in% chosen_encode_genes)
+encode_data_sets_bayesian <- encode_data_sets %>%
+  pivot_wider(names_from = sample, values_from = expected_count) %>%
+  ungroup() %>%
+  transmute(gene_name = gene_id, rep = biorep, condition = 1,
+            total, sup = cytoplasm, pel = nuclear)
 
-write_tsv(encode_data_sets_subsampled, here("data/output/subsampled_experimental_counts/ENCODE_dataset_subsampled.tsv"))
+encode_data_sets_subsampled_bayesian <- encode_data_sets %>%
+  filter(gene_id %in% chosen_encode_genes) %>%
+  pivot_wider(names_from = sample, values_from = expected_count) %>%
+  ungroup() %>%
+  transmute(gene_name = gene_id, rep = biorep, condition = 1,
+            total, sup = cytoplasm, pel = nuclear)
+
+write_tsv(encode_data_sets_bayesian, here("data/input/ENCODE_dataset/ENCODE_dataset_bayesian_combined.tsv"))
+
+write_tsv(encode_data_sets_subsampled_bayesian, here("data/output/subsampled_experimental_counts/ENCODE_dataset_subsampled.tsv"))
 
 #total_sup_pel_iserman_et_al_counts <- read_tsv(here("data/input/Iserman_et_al_dataset/full_transcript_counts.txt"))
 ```
@@ -78,9 +92,9 @@ ggplot(DESeq_vs_ground_truth_data_set) +
   coord_equal(xlim = c(-10,10), ylim = c(-6,6))
 ```
 
-```{r compare-DESeq-vs-simulated-ground-truth}
+```{r compare-Bayesian-vs-simulated-ground-truth}
 Bayesian_vs_ground_truth_data_set <- simulate_fractions_log_fold_ground_truth %>%
-  inner_join(Bayesian_model_simulated_random_results %>%
+  inner_join(Bayesian_model_simulated_results %>%
                transmute(gene_name, 
                          condition,
                          Bayesian_logfoldchange = sup_latent - pel_latent, 
@@ -123,5 +137,12 @@ ggplot(DESeq2_model_iserman_results %>%
 
 ggplot(DESeq2_model_encode_results) +
   geom_point(aes(x = log2FoldChange, y =-log10(padj))) 
+
+```
+
+```{r plot-bayesian-encode-results}
+
+ggplot(Bayesian_model_encode_subsample_results) +
+  geom_point(aes(x = pel_latent - sup_latent, y =-log10(pvalue))) 
 
 ```
