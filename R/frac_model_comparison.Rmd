@@ -11,34 +11,88 @@ library(here)
 
 latent_model_results_skewed_multi_condition <-  read_tsv(here("data/output/diff_frac_models/latent_model_skewed_multi_condition_count.tsv"))
 
-simulate_fractions_ground_truth <-  read_tsv(here("data/output/simulated_counts/sup_pel_simulated_fractions.tsv")) 
+simulate_fractions_ground_truth <-  read_tsv(here("data/output/simulated_counts/sup_pel_noiseless_fractions.tsv")) 
+
+simulated_condition_dictionary <- tibble(condition_number = 1:3,
+                                         condition_name = c("random", "marginal", "specific"))
+
+simulate_fractions_log_fold_ground_truth <- simulate_fractions_ground_truth %>%
+  inner_join(simulated_condition_dictionary,
+             by = c(condition = "condition_number")) %>%
+  transmute(gene_name, 
+            condition = condition_name, 
+            GT_log2foldchange = log2(sup_frac/pel_frac), 
+            GT_logfoldchange = log(sup_frac/pel_frac))
 
 DESeq2_model_iserman_results <- read_tsv(here("./data/output/diff_frac_models/DESeq2_iserman_counts.tsv"))
 
 DESeq2_model_encode_results <- read_tsv(here("./data/output/diff_frac_models/DESeq2_encode_counts.tsv"))
 
 DESeq2_model_simulated_results <- read_tsv(here("./data/output/diff_frac_models/DESeq2_simulated_counts.tsv"))
+
+Bayesian_model_simulated_random_results <- read_tsv(here("./data/output/diff_frac_models/bayesian_simulated_result.tsv"))
+```
+
+```{r create-subsample-experimental-datasets, eval = FALSE}
+set.seed(69)
+
+encode_data_files <- list.files(here("data/input/ENCODE_dataset"), full.names = TRUE)
+
+encode_data_sets <- tibble(file = encode_data_files) %>%
+  group_by(file) %>%
+  summarise(read_tsv(file)) %>%
+  ungroup() %>%
+  transmute(sample = str_extract(file, "(?<=encode_)[a-z0-9]+(?=_)"),
+            biorep = str_extract(file, "(?<=_biorep)[0-9]+(?=.tsv)"),
+            gene_id,
+            expected_count) %>%
+  group_by(gene_id) %>%
+  filter(sum(expected_count > 5) == 6)
+
+chosen_encode_genes <- encode_data_sets %>%
+  pull(gene_id) %>%
+  unique() %>%
+  sample(500)
+
+encode_data_sets_subsampled <- encode_data_sets %>%
+  filter(gene_id %in% chosen_encode_genes)
+
+write_tsv(encode_data_sets_subsampled, here("data/output/subsampled_experimental_counts/ENCODE_dataset_subsampled.tsv"))
+
+#total_sup_pel_iserman_et_al_counts <- read_tsv(here("data/input/Iserman_et_al_dataset/full_transcript_counts.txt"))
 ```
 
 ```{r compare-DESeq-vs-simulated-ground-truth}
-simulated_condition_dictionary <- tibble(condition_number = 1:3,
-                                         condition_name = c("random", "marginal", "specific"))
-
-DESeq_vs_ground_truth_data_set <- simulate_fractions_ground_truth %>%
-  inner_join(simulated_condition_dictionary,
-             by = c(condition = "condition_number")) %>%
-  transmute(gene_name, condition = condition_name, GT_log2foldchange = log2(pel_frac/sup_frac)) %>%
+DESeq_vs_ground_truth_data_set <- simulate_fractions_log_fold_ground_truth %>%
   inner_join(DESeq2_model_simulated_results %>%
                transmute(gene_name, condition, 
                          DESeq_log2foldchange = log2FoldChange, 
-                         sig = padj < 0.05))
+                         sig = (padj < 0.05) & (DESeq_log2foldchange < 0))) %>%
+  mutate(condition = factor(condition, levels = c("random", "marginal", "specific")))
 
 ggplot(DESeq_vs_ground_truth_data_set) +
   geom_point(aes(x = GT_log2foldchange, y=DESeq_log2foldchange, colour = sig)) +
   theme_bw() +
   geom_abline(intercept = 0, slope = 1) +
   facet_wrap(~condition) +
-  coord_equal()
+  coord_equal(xlim = c(-10,10), ylim = c(-6,6))
+```
+
+```{r compare-DESeq-vs-simulated-ground-truth}
+Bayesian_vs_ground_truth_data_set <- simulate_fractions_log_fold_ground_truth %>%
+  inner_join(Bayesian_model_simulated_random_results %>%
+               transmute(gene_name, 
+                         condition,
+                         Bayesian_logfoldchange = sup_latent - pel_latent, 
+                         sig = pvalue > 0.95))  %>%
+  mutate(condition = factor(condition, levels = c("random", "marginal", "specific")))
+
+ggplot(Bayesian_vs_ground_truth_data_set) +
+  geom_point(aes(x = GT_logfoldchange, y=Bayesian_logfoldchange, colour = sig)) +
+  theme_bw() +
+  geom_abline(intercept = 0, slope = 1) +
+  facet_wrap(~condition) +
+  coord_equal(xlim = c(-10,10), ylim = c(-6,6))
 ```
 
 ```{r compare-DESeq-iserman-conditions}
