@@ -208,9 +208,9 @@ test_frac_across_condition <- function(condition, ratio){
 one_condition_extract <- function(stanmodel){
 stanmodel %>%                                      
           spread_draws(sup_latent[condition, gene_name],
-                       pel_latent[condition, gene_name]) %>% summarise_draws() %>% ungroup() %>% dplyr::select(gene_name,variable,median)%>%pivot_wider(names_from="variable",values_from="median") %>% inner_join(bayesian_simulated_specific_result %>% 
+                       pel_latent[condition, gene_name]) %>% summarise_draws() %>% ungroup() %>% dplyr::select(gene_name,variable,median)%>%pivot_wider(names_from="variable",values_from="median") %>% inner_join(stanmodel %>% 
           spread_draws(sup_latent[condition, gene_name],
-                       pel_latent[condition, gene_name]) %>% group_by(gene_name) %>% summarise(pvalue = sum(sup_latent < pel_latent) / 2000) %>% ungroup()) %>% write_tsv(file = here("data/output/diff_frac_models/bayesian_simulated_specific_result.tsv"))
+                       pel_latent[condition, gene_name]) %>% group_by(gene_name) %>% summarise(pvalue = sum(sup_latent < pel_latent) / 2000) %>% ungroup())
 }
 
 test_diff_condition <- function(stan_model){
