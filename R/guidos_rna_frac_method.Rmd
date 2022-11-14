@@ -17,6 +17,8 @@ simulated_datasets <- read_tsv(here("data/output/simulated_counts/total_sup_pel_
 
 encode_subsample_dataset <- read_tsv(here("data/output/subsampled_experimental_counts/ENCODE_dataset_subsampled.tsv"))
 
+encode_full_dataset <- read_tsv(here("data/input/ENCODE_dataset/ENCODE_dataset_bayesian_combined.tsv"))
+
 total_sup_pel_iserman_et_al_counts <- read_tsv(here("data/input/Iserman_et_al_dataset/full_transcript_counts.txt")) %>%
   pivot_longer(-ensembl_gene_id, names_to = "sample", values_to = "counts") %>%
   separate(sample, "_", into = c("strain", "temperature", "rep", "fraction", NA)) %>%
