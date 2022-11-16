@@ -29,7 +29,7 @@ total_sup_pel_iserman_et_al_counts <- read_tsv(here("data/input/Iserman_et_al_da
             sup = SN,
             rep,
             total) %>%
-  filter(condition %in% c("IDR_30C", "IDR_42C", "WT_30C", "WT_42C")) %>%
+  filter(condition %in% c("WT_30C", "WT_40C", "WT_42C")) %>%
   filter(pel > 0 | sup > 0 | total > 0) %>%
   group_by(gene_name) %>%
   filter(length(gene_name) == 8) %>%
