@@ -90,13 +90,13 @@ parameters {
   real pel_scale_factor[NCON, NREP];
 
   // latent counts
-  vector[NRNA] gene_count_base;
+  //vector[NRNA] gene_count_base;
   vector[NRNA] gene_count_condition[NCON];
   vector[NRNA] pel_count_condition[NCON];
   
   // latent count prior parameters
-  real norm_alpha[NCON, 2];
-  real<lower=0> norm_beta[NCON, 2];
+  real norm_alpha;
+  real<lower=0> norm_beta;
   
   // dispersion parameter for counts
   real<lower=0> phi[3];
@@ -108,8 +108,8 @@ transformed parameters{
   vector[NRNA] pel_latent[NCON];
 
   for(con in 1:NCON){
-    sup_latent[con] = gene_count_base + gene_count_condition[con];
-    pel_latent[con] = gene_count_base + gene_count_condition[con] + pel_count_condition[con];
+    sup_latent[con] = gene_count_condition[con];
+    pel_latent[con] = sup_latent[con] + pel_count_condition[con];
   }
 }
 
@@ -118,7 +118,7 @@ model{
 norm_alpha ~ normal(7,2);
 norm_beta ~ normal(2,1);
 
-gene_count_base ~ normal(norm_alpha, norm_beta);
+//gene_count_base ~ normal(norm_alpha, norm_beta);
 
 for(con in 1:NCON){
 
@@ -130,7 +130,7 @@ for(con in 1:NCON){
     phi ~ normal(100, 10);
 
     // latent counts
-    gene_count_condition[con] ~ normal(0, 1);
+    gene_count_condition[con] ~ normal(norm_alpha, norm_beta);
     pel_count_condition[con] ~ normal(0, 1);
     
 
