@@ -71,6 +71,14 @@ DESeq2_data_set_simulated_specific <- DESeq(DESeq2_data_set_simulated_specific)
 
 
 DESeq2_result_simulated_specific <- results(DESeq2_data_set_simulated_specific)
+
+collect_size_factors_simulated <- sizeFactors(DESeq2_data_set_simulated_specific) |>
+  as_tibble(rownames = "label") |>
+  bind_rows(sizeFactors(DESeq2_data_set_simulated_marginal) |>
+  as_tibble(rownames = "label")) |>
+  bind_rows(sizeFactors(DESeq2_data_set_simulated_random) |>
+  as_tibble(rownames = "label")) |>
+  separate(label, into = c("condition", "rep", "frac"))
 ```
 
 ```{r run-DESeq-encode}
@@ -174,6 +182,9 @@ write_tsv(DESeq2_result_simulated_specific %>%
                         dplyr::select(gene_name,baseMean, log2FoldChange, padj) %>%
                         mutate(condition = "marginal")),
           here("./data/output/diff_frac_models/DESeq2_simulated_counts.tsv"))
+
+write_tsv(collect_size_factors_simulated,
+          here("./data/output/diff_frac_models/DESeq2_simulated_size_factors.tsv"))
 
 write_tsv(DESeq2_result_encode %>%
             as.data.frame() %>%
