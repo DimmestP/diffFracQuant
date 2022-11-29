@@ -90,7 +90,6 @@ parameters {
   real pel_scale_factor[NCON, NREP];
 
   // latent counts
-  //vector[NRNA] gene_count_base;
   vector[NRNA] gene_count_condition[NCON];
   vector[NRNA] pel_count_condition[NCON];
   
@@ -109,6 +108,7 @@ transformed parameters{
 
   for(con in 1:NCON){
     sup_latent[con] = gene_count_condition[con];
+
     pel_latent[con] = sup_latent[con] + pel_count_condition[con];
   }
 }
@@ -117,8 +117,6 @@ model{
 
 norm_alpha ~ normal(7,2);
 norm_beta ~ normal(2,1);
-
-//gene_count_base ~ normal(norm_alpha, norm_beta);
 
 for(con in 1:NCON){
 
