@@ -8,21 +8,61 @@ output: pdf_document
 ```{r setup, include=FALSE}
 library(tidyverse)
 library(here)
+library(latex2exp)
+library(grid)
+library(gridExtra)
+library(cowplot)
+
+mytheme <- gridExtra::ttheme_default(
+  core = list(padding = unit(c(2.5, 2.5), "mm")))
+
+library("biomaRt")
+
+ensembl=useMart("ensembl")
+
+theme_set(
+  theme_cowplot(font_size = 12, 
+                font_family = "sans",
+                rel_small = 10/12,
+                rel_tiny = 9/12,
+                rel_large = 12/12) %+replace%
+    theme(legend.justification = "center"))
+
+iserman_et_al_gene_names <- read_tsv(here("data/input/Iserman_et_al_dataset/full_transcript_counts.txt")) |>
+  pivot_longer(-ensembl_gene_id, names_to = "sample", values_to = "counts") |>
+  separate(sample, "_", into = c("strain", "temperature", "rep", "fraction", NA)) |>
+  pivot_wider(names_from = fraction, values_from = counts) |>
+  transmute(gene_name = ensembl_gene_id,
+            condition = paste0(strain, "_", temperature),
+            pel = pellet,
+            sup = SN,
+            rep,
+            total) |>
+  filter(condition %in% c("WT_30C", "WT_40C", "WT_42C")) |>
+  filter(pel > 0 | sup > 0 | total > 0) |>
+  group_by(gene_name) |>
+  filter(length(gene_name) == 6) |>
+  ungroup() |>
+  pull(gene_name) |>
+  unique()
 
 latent_model_results_skewed_multi_condition <-  read_tsv(here("data/output/diff_frac_models/latent_model_skewed_multi_condition_count.tsv"))
+
+simulate_fractions_ground_truth <-  read_tsv(here("data/output/simulated_counts/sup_pel_noiseless_fractions.tsv")) 
+
+simulate_scale_factor_ground_truth <-  read_tsv(here("data/output/simulated_counts/tot_sup_pel_scale_factor_multi_condition.tsv")) 
 
 simulate_fractions_ground_truth <-  read_tsv(here("data/output/simulated_counts/sup_pel_noiseless_fractions.tsv")) 
 
 simulated_condition_dictionary <- tibble(condition_number = 1:3,
                                          condition_name = c("random", "marginal", "specific"))
 
-simulate_fractions_log_fold_ground_truth <- simulate_fractions_ground_truth %>%
+simulate_fractions_log2_fold_ground_truth <- simulate_fractions_ground_truth |>
   inner_join(simulated_condition_dictionary,
-             by = c(condition = "condition_number")) %>%
+             by = c(condition = "condition_number")) |>
   transmute(gene_name, 
             condition = condition_name, 
-            GT_log2foldchange = log2(sup_frac/pel_frac), 
-            GT_logfoldchange = log(sup_frac/pel_frac))
+            GT_log2foldchange = log2(sup_frac/pel_frac))
 
 DESeq2_model_iserman_results <- read_tsv(here("./data/output/diff_frac_models/DESeq2_iserman_counts.tsv"))
 
@@ -30,7 +70,15 @@ DESeq2_model_encode_results <- read_tsv(here("./data/output/diff_frac_models/DES
 
 DESeq2_model_simulated_results <- read_tsv(here("./data/output/diff_frac_models/DESeq2_simulated_counts.tsv"))
 
+DESeq2_model_simulated_scale_factors <- read_tsv(here("./data/output/diff_frac_models/DESeq2_simulated_size_factors.tsv"))
+
 Bayesian_model_simulated_results <- read_tsv(here("./data/output/diff_frac_models/bayesian_simulated_result.tsv"))
+
+Bayesian_model_encode_full_results <- read_tsv(here("./data/output/diff_frac_models/bayesian_encode_full_data_set_result.tsv"))
+
+Bayesian_model_encode_one_rep_results <- read_tsv(here("./data/output/diff_frac_models/bayesian_encode_one_rep_data_set_result.tsv"))
+
+Bayesian_model_iserman_full_results <- read_tsv(here("./data/output/diff_frac_models/bayesian_iserman_result.tsv"))
 
 Bayesian_model_encode_subsample_results <- read_tsv(here("data/output/diff_frac_models/bayesian_encode_subsample_result.tsv"))
 ```
@@ -40,32 +88,32 @@ set.seed(69)
 
 encode_data_files <- list.files(here("data/input/ENCODE_dataset"), full.names = TRUE)
 
-encode_data_sets <- tibble(file = encode_data_files) %>%
-  group_by(file) %>%
-  summarise(read_tsv(file)) %>%
-  ungroup() %>%
+encode_data_sets <- tibble(file = encode_data_files) |>
+  group_by(file) |>
+  summarise(read_tsv(file)) |>
+  ungroup() |>
   transmute(sample = str_extract(file, "(?<=encode_)[a-z0-9]+(?=_)"),
             biorep = str_extract(file, "(?<=_biorep)[0-9]+(?=.tsv)"),
             gene_id,
-            expected_count) %>%
-  group_by(gene_id) %>%
+            expected_count) |>
+  group_by(gene_id) |>
   filter(sum(expected_count > 5) == 6)
 
-chosen_encode_genes <- encode_data_sets %>%
-  pull(gene_id) %>%
-  unique() %>%
+chosen_encode_genes <- encode_data_sets |>
+  pull(gene_id) |>
+  unique() |>
   sample(500)
 
-encode_data_sets_bayesian <- encode_data_sets %>%
-  pivot_wider(names_from = sample, values_from = expected_count) %>%
-  ungroup() %>%
+encode_data_sets_bayesian <- encode_data_sets |>
+  pivot_wider(names_from = sample, values_from = expected_count) |>
+  ungroup() |>
   transmute(gene_name = gene_id, rep = biorep, condition = 1,
             total, sup = cytoplasm, pel = nuclear)
 
-encode_data_sets_subsampled_bayesian <- encode_data_sets %>%
-  filter(gene_id %in% chosen_encode_genes) %>%
-  pivot_wider(names_from = sample, values_from = expected_count) %>%
-  ungroup() %>%
+encode_data_sets_subsampled_bayesian <- encode_data_sets |>
+  filter(gene_id %in% chosen_encode_genes) |>
+  pivot_wider(names_from = sample, values_from = expected_count) |>
+  ungroup() |>
   transmute(gene_name = gene_id, rep = biorep, condition = 1,
             total, sup = cytoplasm, pel = nuclear)
 
@@ -76,73 +124,557 @@ write_tsv(encode_data_sets_subsampled_bayesian, here("data/output/subsampled_exp
 #total_sup_pel_iserman_et_al_counts <- read_tsv(here("data/input/Iserman_et_al_dataset/full_transcript_counts.txt"))
 ```
 
-```{r compare-DESeq-vs-simulated-ground-truth}
-DESeq_vs_ground_truth_data_set <- simulate_fractions_log_fold_ground_truth %>%
-  inner_join(DESeq2_model_simulated_results %>%
-               transmute(gene_name, condition, 
-                         DESeq_log2foldchange = log2FoldChange, 
-                         sig = (padj < 0.05) & (DESeq_log2foldchange < 0))) %>%
-  mutate(condition = factor(condition, levels = c("random", "marginal", "specific")))
+```{r compare-simulated-DESeq-vs-DiffFracQuant}
+condition_name_dictionary <- tibble(condition = c("random", "marginal", "specific"),
+                                    pretty_name = factor(c("Random", "Marginal", "Specific"),
+                                                         levels = c("Random", "Marginal", "Specific")))
 
-ggplot(DESeq_vs_ground_truth_data_set) +
-  geom_point(aes(x = GT_log2foldchange, y=DESeq_log2foldchange, colour = sig)) +
-  theme_bw() +
-  geom_abline(intercept = 0, slope = 1) +
-  facet_wrap(~condition) +
-  coord_equal(xlim = c(-10,10), ylim = c(-6,6))
-```
+condition_number_dictionary <- tibble(condition = c(1, 2, 3),
+                                    pretty_name = factor(c("Random", "Marginal", "Specific"),
+                                                         levels = c("Random", "Marginal", "Specific")))
 
-```{r compare-Bayesian-vs-simulated-ground-truth}
-Bayesian_vs_ground_truth_data_set <- simulate_fractions_log_fold_ground_truth %>%
-  inner_join(Bayesian_model_simulated_results %>%
+fraction_name_dictionary <- tibble(frac = c("Tot", "pel", "sup"),
+                                    frac_pretty_name = factor(c("Total", "Pellet", "Supernatent"),
+                                                         levels = c("Total", "Supernatent", "Pellet")))
+
+
+DESeq2_vs_ground_truth_scale_factors <- DESeq2_model_simulated_scale_factors |>
+  dplyr::rename(DESeq2 = value) |>
+  inner_join(simulate_scale_factor_ground_truth |>
+            dplyr::select(-total) |>
+            pivot_longer(cols = c("pel","sup"), names_to = "frac") |>
+              dplyr::rename(GT = value)) %>%
+  inner_join(condition_number_dictionary) %>%
+  inner_join(fraction_name_dictionary)
+
+DESeq2_vs_ground_truth_scale_factors_cor <- DESeq2_vs_ground_truth_scale_factors |>
+  summarise(cor = cor(DESeq2, GT),
+            r_cor_label = paste(TeX(paste0("R = ", signif(cor,digits = 3)))))
+
+DESeq2_vs_ground_truth_scale_factors_plot <- ggplot(DESeq2_vs_ground_truth_scale_factors) + 
+  geom_point(aes(y=DESeq2, x = GT, colour = pretty_name, shape = frac_pretty_name)) + 
+  geom_abline(slope = 1, intercept = 0, colour = "grey") + 
+  coord_equal() +
+  labs(shape = "Fraction", colour = "Condition",
+       x = "Ground Truth Scale Factor", y = "DESeq2 Scale Factor") +
+  geom_text(aes(label = r_cor_label), 
+            data = DESeq2_vs_ground_truth_scale_factors_cor, 
+            x = 2.5, y = 3, hjust = 1, vjust = 0) 
+  
+
+DESeq_vs_bayesian_simulate_data_set <- simulate_fractions_log2_fold_ground_truth |>
+  inner_join(DESeq2_model_simulated_results |>
                transmute(gene_name, 
                          condition,
-                         Bayesian_logfoldchange = sup_latent - pel_latent, 
-                         sig = pvalue > 0.95))  %>%
-  mutate(condition = factor(condition, levels = c("random", "marginal", "specific")))
+                         log2FoldChange, 
+                         sig = (padj < 0.05) & (log2FoldChange < 0),
+                         method = "DESeq2") |> 
+               bind_rows(Bayesian_model_simulated_results |>
+                           transmute(gene_name, 
+                                     condition,
+                                     log2FoldChange = log2(exp(sup_latent - pel_latent)), 
+                                     sig = pvalue > 0.95,
+                                     method = "DiffFracQuant"))) |>
+  inner_join(condition_name_dictionary)
 
-ggplot(Bayesian_vs_ground_truth_data_set) +
-  geom_point(aes(x = GT_logfoldchange, y=Bayesian_logfoldchange, colour = sig)) +
-  theme_bw() +
+
+DESeq_vs_bayesian_simulate_cor <- DESeq_vs_bayesian_simulate_data_set |> 
+  group_by(method, pretty_name) |>
+  summarise(cor = cor(GT_log2foldchange, log2FoldChange),
+            r_cor_label = paste(TeX(paste0("R = ", signif(cor,digits = 3)))))
+
+DESeq_vs_bayesian_plot <- ggplot(DESeq_vs_bayesian_simulate_data_set) +
+  geom_rect(xmin = -7, xmax = 0, ymin = -6, ymax = 11, fill = "grey", alpha = 0.9) +
+  geom_point(aes(x = GT_log2foldchange, y=log2FoldChange, colour = sig)) +
   geom_abline(intercept = 0, slope = 1) +
-  facet_wrap(~condition) +
-  coord_equal(xlim = c(-10,10), ylim = c(-6,6))
+  facet_grid(method~pretty_name) +
+  coord_equal(xlim = c(-6,10), ylim = c(-5,10)) +
+  labs(x = TeX("Ground Truth $log_2\\, (N^{A}/N^{B})$"),
+       y = TeX("Predicted $log_2\\, (N^{A}/N^{B})$"),
+       colour = "Differentially\nFractionated") +
+  geom_text(label = "Frac B", x = -3.5, y = 9) +
+  geom_text(label = "Frac A", x = 5, y = 9) +
+  geom_text(aes(label = r_cor_label), 
+            data = DESeq_vs_bayesian_simulate_cor, 
+            x = 10.5, y = -4.5, hjust = 1, vjust = 0)
+
+all_gene_simulated_QC <- DESeq_vs_bayesian_simulate_data_set |>
+  group_by(condition, method) |>
+  summarise(FP  = sum(sig & GT_log2foldchange >= 0),
+            TPR = signif(sum(sig & GT_log2foldchange < 0) / sum(GT_log2foldchange < 0),
+                         digits = 3),
+            FDR = signif(ifelse(FP != 0, FP / (FP + sum(sig & GT_log2foldchange < 0)), 0),
+                         digits = 3)) |>
+  ungroup() |>
+  inner_join(condition_name_dictionary) |>
+  arrange(pretty_name) |>
+  dplyr::select(-FP)
+
+least_abundant <- simulate_fractions_ground_truth |> 
+  filter(condition == 1) |> 
+  slice_min(total, prop = 0.2) |>
+  pull(gene_name)
+
+least_abundant_simulated_QC <- DESeq_vs_bayesian_simulate_data_set |>
+  filter(gene_name %in% least_abundant) |>
+  group_by(condition, method) |>
+  summarise(FP  = sum(sig & GT_log2foldchange >= 0),
+            TPR = signif(sum(sig & GT_log2foldchange < 0) / sum(GT_log2foldchange < 0),
+                         digits = 3),
+            FDR = signif(ifelse(FP != 0, FP / (FP + sum(sig & GT_log2foldchange < 0)), 0),
+                         digits = 3)) |>
+  ungroup() |>
+  inner_join(condition_name_dictionary) |>
+  arrange(pretty_name) |>
+  dplyr::select(-condition, -method, -FP, -pretty_name)
+
+smallest_change <- DESeq_vs_bayesian_simulate_data_set |> 
+  mutate(GT_log2foldchange = abs(GT_log2foldchange)) |>
+  group_by(condition) |> 
+  slice_min(GT_log2foldchange, prop = 0.2) |>
+  dplyr::select(gene_name, condition)
+
+smallest_change_simulated_QC <- DESeq_vs_bayesian_simulate_data_set |>
+  inner_join(smallest_change) |>
+  group_by(condition, method) |>
+  summarise(FP = sum(sig & GT_log2foldchange >= 0),
+            TPR = signif(sum(sig & GT_log2foldchange < 0) / sum(GT_log2foldchange < 0),
+                         digits = 3),
+            FDR = signif(ifelse(FP != 0, FP / (FP + sum(sig & GT_log2foldchange < 0)), 0),
+                         digits = 3)) |>
+  ungroup() |>
+  inner_join(condition_name_dictionary) |>
+  arrange(pretty_name) |>
+  dplyr::select(-condition, -method, -FP, -pretty_name)
+
+DESeq_vs_bayesian_all_gene_table<- grid.arrange(
+  grid.arrange(textGrob(label = ""),
+               tableGrob(all_gene_simulated_QC |>
+                           transmute(Condition = pretty_name, Method = method),
+                         theme = mytheme,
+                         rows = NULL),
+               ncol = 1,
+               heights = c(1,5)),
+  grid.arrange(textGrob(label = "All Genes"),
+               tableGrob(all_gene_simulated_QC|>
+                           dplyr::select(TPR, FDR),
+                         theme = mytheme,
+                         rows = NULL),
+               ncol = 1,
+               heights = c(1,5)),
+             nrow = 1,
+             widths = c(1.5,1))
+
+DESeq_vs_bayesian_subset_table <- grid.arrange(
+  grid.arrange(textGrob(label = ""),
+               tableGrob(all_gene_simulated_QC |>
+                           transmute(Condition = pretty_name, Method = method),
+                         theme = mytheme,
+                         rows = NULL),
+               ncol = 1,
+               heights = c(1,3)),
+  grid.arrange(textGrob(label = "Least Abundant"),
+               tableGrob(least_abundant_simulated_QC,
+                         theme = mytheme,
+                         rows = NULL),
+               ncol = 1,
+               heights = c(1,3)),
+  grid.arrange(textGrob(label = "Smallest Change"),
+               tableGrob(smallest_change_simulated_QC,
+                         theme = mytheme,
+                         rows = NULL),
+               ncol = 1,
+               heights = c(1,3)),
+             nrow = 1,
+             widths = c(1.8,1,1))
+
+DESeq_vs_bayesian_combined <- plot_grid(DESeq_vs_bayesian_plot,
+             plot_grid(DESeq2_vs_ground_truth_scale_factors_plot +
+                         theme(legend.position = "none"),
+                       DESeq_vs_bayesian_table,
+                       rel_widths = c(1,1.6),
+                       labels = c("B", "C")),
+             plot_grid(get_legend(DESeq2_vs_ground_truth_scale_factors_plot),
+                       DESeq_vs_bayesian_subset_table,
+                       labels = c("", "D"),
+                       rel_widths = c(1,3)),
+             ncol = 1,
+             rel_heights = c(2, 1, 1),
+             labels = c("A", "", ""))
+
+DESeq_vs_bayesian_combined
+
 ```
 
-```{r compare-DESeq-iserman-conditions}
+```{r plot-bayesian-one-vs-two-rep-results}
 
-ggplot(DESeq2_model_iserman_results %>%
-  select(-baseMean, -padj) %>%
-  pivot_wider(names_from = condition, values_from = log2FoldChange)) +
-  geom_point(aes(x = WT_30C, y =WT_40C)) +
-  coord_equal() +
-  geom_abline(intercept = 0, slope = 1)
+Bayesian_one_vs_two_rep_encode_results <- Bayesian_model_encode_full_results |>
+  transmute(gene_name=DESeq2_model_encode_results$gene_name,
+            bayes_log2_foldchange = log2(exp((-sup_latent + pel_latent))),
+             bayes_pvalue = pvalue) |>
+              inner_join(Bayesian_model_encode_one_rep_results |>
+                           transmute(gene_name=DESeq2_model_encode_results$gene_name,
+                                     bayes_log2_foldchange_one_rep = log2(exp((-sup_latent + pel_latent))),
+                                     bayes_pvalue_one_rep = pvalue),
+                         by = "gene_name") |>
+  transmute(gene_name, 
+            bayes_log2_foldchange, 
+            bayes_log2_foldchange_one_rep,
+            `Differentially Fractionated` = ifelse((bayes_pvalue_one_rep > 0.975 & 
+                                                      bayes_pvalue > 0.975),
+                                                   "Both",
+                                                   ifelse(bayes_pvalue_one_rep > 0.975 &
+                                                      bayes_pvalue <= 0.975,
+                                                          "One Rep Only",
+                                                          ifelse(bayes_pvalue > 0.975,
+                                                                 "Two Reps Only",
+                                                                 "Neither")))) %>%
+  mutate(`Differentially Fractionated` = factor(`Differentially Fractionated`,
+                                                levels = c("Both", "Two Reps Only", 
+                                                           "One Rep Only", "Neither")))
 
-ggplot(DESeq2_model_iserman_results %>%
-  select(-baseMean, -padj) %>%
-  pivot_wider(names_from = condition, values_from = log2FoldChange)) +
-  geom_point(aes(x = WT_30C, y =WT_42C)) +
-  coord_equal() +
-  geom_abline(intercept = 0, slope = 1)
+Bayesian_one_vs_two_rep_encode_cor <- Bayesian_one_vs_two_rep_encode_results |>
+  summarise(cor = cor(bayes_log2_foldchange, bayes_log2_foldchange_one_rep),
+            r_cor_label = paste(TeX(paste0("R = ", signif(cor,digits = 3))))) 
 
-ggplot(DESeq2_model_iserman_results %>%
-  select(-baseMean, -padj) %>%
-  pivot_wider(names_from = condition, values_from = log2FoldChange)) +
-  geom_point(aes(x = WT_40C, y =WT_42C)) +
-  coord_equal() +
-  geom_abline(intercept = 0, slope = 1)
+Bayesian_one_vs_two_rep_encode_plot <- ggplot(Bayesian_one_vs_two_rep_encode_results) +
+  geom_point(aes(x = bayes_log2_foldchange, 
+                 y = bayes_log2_foldchange_one_rep,
+                 colour = `Differentially Fractionated`)) +
+  geom_abline(intercept = 0, slope = 1, colour = "black") +
+  labs(x = TeX("Two Rep $log_2\\, (N^{Nuc}/N^{Cyt})$"),
+       y = TeX("One Rep $log_2\\, (N^{Nuc}/N^{Cyt})$"),
+       colour = "Differentially  \nFractionated") +
+  coord_equal(xlim = c(-8, 8), ylim= c(-8, 8)) +
+  geom_hline(yintercept = 0, colour = "grey") +
+  geom_vline(xintercept = 0, colour = "grey") +
+  geom_text(aes(label = r_cor_label), 
+            data = Bayesian_one_vs_two_rep_encode_cor, 
+            x = 6, y = -7, hjust = 1, vjust = 0) +
+  theme(legend.position = "bottom") + 
+  guides(colour=guide_legend(ncol=1)) +
+  scale_colour_manual(values = c("#F8766D", "#00BA38", "#C77CFF", "#619CFF"))
+
+Bayesian_one_vs_two_rep_encode_plot
+
 ```
 
-```{r plot-DESeq-encode-results}
+```{r plot-bayesian-vs-DESeq-encode-results}
+Bayesian_vs_deseq_encode_full_results <- Bayesian_model_encode_full_results |>
+  transmute(gene_name=DESeq2_model_encode_results$gene_name,
+            bayes_log2_foldchange = log2(exp((-sup_latent + pel_latent))),
+             bayes_pvalue = pvalue) |>
+              inner_join(DESeq2_model_encode_results |>
+                           transmute(gene_name,
+                                     DESeq_log2_foldchange = log2FoldChange,
+                                     DESeq_pvalue = padj),
+                         by = "gene_name") |>
+  transmute(gene_name, 
+            bayes_log2_foldchange, 
+            DESeq_log2_foldchange,
+            `Differentially Fractionated` = ifelse((DESeq_pvalue < 0.05 & 
+                                                      bayes_pvalue > 0.975 &
+                                                      DESeq_log2_foldchange > 0),
+                                                   "Both",
+                                                   ifelse(DESeq_pvalue < 0.05 &
+                                                      DESeq_log2_foldchange > 0,
+                                                          "DESeq2 Only",
+                                                          ifelse(bayes_pvalue > 0.975,
+                                                                 "DiffFracQuant Only",
+                                                                 "Neither"))))
 
-ggplot(DESeq2_model_encode_results) +
-  geom_point(aes(x = log2FoldChange, y =-log10(padj))) 
+Bayesian_vs_deseq_encode_full_cor <- Bayesian_vs_deseq_encode_full_results |>
+  summarise(cor = cor(bayes_log2_foldchange, DESeq_log2_foldchange),
+            r_cor_label = paste(TeX(paste0("R = ", signif(cor,digits = 3))))) 
+
+Bayesian_vs_deseq_encode_full_plot <- ggplot(Bayesian_vs_deseq_encode_full_results) +
+  geom_point(aes(x = bayes_log2_foldchange, 
+                 y = DESeq_log2_foldchange,
+                 colour = `Differentially Fractionated`)) +
+  geom_abline(intercept = 0, slope = 1, colour = "black") +
+  labs(x = TeX("DiffFracQuant $log_2\\, (N^{Nuc}/N^{Cyt})$"),
+       y = TeX("DESeq $log_2\\, (N^{Nuc}/N^{Cyt})$"),
+       colour = "Differentially  \nFractionated") +
+  coord_equal(xlim = c(-8, 8), ylim= c(-8, 8)) +
+  geom_hline(yintercept = 0, colour = "grey") +
+  geom_vline(xintercept = 0, colour = "grey") +
+  geom_text(aes(label = r_cor_label), 
+            data = Bayesian_vs_deseq_encode_full_cor, 
+            x = 8.5, y = -7, hjust = 1, vjust = 0)
 
 ```
 
-```{r plot-bayesian-encode-results}
+```{r encode-gene-ontology-analysis}
+ensembl = useDataset("hsapiens_gene_ensembl",mart=ensembl)
 
-ggplot(Bayesian_model_encode_subsample_results) +
-  geom_point(aes(x = pel_latent - sup_latent, y =-log10(pvalue))) 
+attributes = listAttributes(ensembl)
 
+Both_goids = getBM(
+        attributes=c('ensembl_gene_id',
+                     'ensembl_transcript_id',
+                     'gene_biotype',
+                     'rnacentral',
+                     'transcript_biotype',
+                     'go_id', 
+                     'name_1006'), 
+
+        filters='ensembl_gene_id', 
+        values=Bayesian_vs_deseq_encode_full_results |>
+          filter(`Differentially Fractionated` == "Both") |>
+          mutate(gene_name = str_remove(gene_name, "\\.[0-9]{1,3}")) |>
+          pull(gene_name), 
+        mart=ensembl)
+
+Both_sig_gene_types <- Bayesian_vs_deseq_encode_full_results |>
+  filter(`Differentially Fractionated` == "Both") |>
+  mutate(gene_name = str_remove(gene_name, "\\.[0-9]{1,3}")) |>
+  left_join(Both_goids |>
+               as_tibble(),
+            by = c(gene_name = 'ensembl_gene_id')) |>
+  mutate(`Gene Biotype` = ifelse(str_detect(gene_biotype, "pseudogene"), "Pseudogene", gene_biotype),
+         `Gene Biotype` = ifelse((!gene_biotype %in% c("Pseudogene", "lncRNA", "protein_coding")), "Other", gene_biotype),
+         `Gene Biotype` = ifelse(gene_biotype == "protein_coding", "Protein Coding", `Gene Biotype`),
+         `Gene Biotype` = ifelse(is.na(`Gene Biotype`), "Other", `Gene Biotype`)) |>
+  group_by(`Gene Biotype`) |>
+  summarise(Number = length(unique(gene_name))) |>
+  arrange(desc(Number))
+
+Both_protein_coding_ontology <- Bayesian_vs_deseq_encode_full_results |>
+  filter(`Differentially Fractionated` == "Both") |>
+  mutate(gene_name = str_remove(gene_name, "\\.[0-9]{1,3}")) |>
+  left_join(Both_goids |>
+               as_tibble(),
+            by = c(gene_name = 'ensembl_gene_id')) |> 
+  filter(gene_biotype == "protein_coding") |>
+  group_by(gene_name) |>
+  summarise(transcript_biotype = unique(transcript_biotype)) |>
+  ungroup()
+
+Both_transcript_ontology <- Both_protein_coding_ontology |>
+  group_by(gene_name) |>
+  summarise(contains_decay = "nonsense_mediated_decay" %in% transcript_biotype, 
+            contains_no_CDS = "protein_coding_CDS_not_defined" %in% transcript_biotype, 
+            protein = "protein_coding" %in% transcript_biotype) |>
+  summarise(`Nonsence Mediated Decay` = sum(contains_decay), 
+            `No CDS` = sum(!contains_decay & contains_no_CDS), 
+            `Protein Coding Only` = sum(!contains_decay & !contains_no_CDS)) |>
+  pivot_longer(cols = c(`Nonsence Mediated Decay`, `No CDS`, `Protein Coding Only`), 
+               names_to = "Transcript Biotype", 
+               values_to = "Number")
+
+DESeq2_goids = getBM(
+        attributes=c('ensembl_gene_id',
+                     'ensembl_transcript_id',
+                     'gene_biotype',
+                     'rnacentral',
+                     'transcript_biotype',
+                     'go_id', 
+                     'name_1006'), 
+
+        filters='ensembl_gene_id', 
+        values=Bayesian_vs_deseq_encode_full_results |>
+          filter(`Differentially Fractionated` == "DESeq2 Only") |>
+          mutate(gene_name = str_remove(gene_name, "\\.[0-9]{1,3}")) |>
+          pull(gene_name), 
+        mart=ensembl)
+
+DESeq2_gene_types <- Bayesian_vs_deseq_encode_full_results |>
+  filter(`Differentially Fractionated` == "DESeq2 Only") |>
+  mutate(gene_name = str_remove(gene_name, "\\.[0-9]{1,3}")) |>
+  left_join(DESeq2_goids |>
+               as_tibble(),
+            by = c(gene_name = 'ensembl_gene_id')) |>
+  mutate(`Gene Biotype` = ifelse(str_detect(gene_biotype, "pseudogene"), "Pseudogene", gene_biotype),
+         `Gene Biotype` = ifelse((!gene_biotype %in% c("Pseudogene", "lncRNA", "protein_coding")), "Other", gene_biotype),
+         `Gene Biotype` = ifelse(gene_biotype == "protein_coding", "Protein Coding", `Gene Biotype`),
+         `Gene Biotype` = ifelse(is.na(`Gene Biotype`), "Other", `Gene Biotype`)) |>
+  group_by(`Gene Biotype`) |>
+  summarise(Number = length(unique(gene_name))) |>
+  arrange(desc(Number))
+
+DESeq2_transcript_types <- Bayesian_vs_deseq_encode_full_results |>
+  filter(`Differentially Fractionated` == "DESeq2 Only") |>
+  mutate(gene_name = str_remove(gene_name, "\\.[0-9]{1,3}")) |>
+  left_join(DESeq2_goids |>
+              as_tibble(),
+            by = c(gene_name = 'ensembl_gene_id')) |> 
+  filter(gene_biotype == "lncRNA", name_1006 != "") |>
+  group_by(gene_name) |>
+  summarise(`gene_silencing` = sum(name_1006 %in% c("miRNA-mediated gene silencing", 
+                                                    "RISC complex", 
+                                                    "miRNA binding",
+                                                    "negative regulation of miRNA-mediated gene silencing", 
+                                                    "RISC complex binding")) > 0,
+            `nuclear` = sum(name_1006 %in% c("nucleolus",
+                                             "nucleus",
+                                             "Cajal body")) > 0) |>
+  ungroup() |>
+  summarise(`Gene Silencing` = sum(`gene_silencing`),
+            `Nuclear` = sum(`nuclear` & !`gene_silencing`),
+            `Other` = sum(!`nuclear` & !`gene_silencing`)) |>
+  pivot_longer(cols = c(`Gene Silencing`,`Nuclear`, `Other`), 
+               names_to = "Transcript Biotype", 
+               values_to = "Number")
+
+
+DESeq_vs_bayesian_encode_table<- grid.arrange(
+  grid.arrange(textGrob(label = "DiffFracQuant & DESeq2\nNuclear Fraction"),
+               tableGrob(Both_sig_gene_types,
+                         theme = mytheme,
+                         rows = NULL),
+               ncol = 1,
+               heights = c(1,4)),
+  grid.arrange(textGrob(label = "DESeq2 Only\nNuclear Fraction"),
+               tableGrob(DESeq2_gene_types,
+                         theme = mytheme,
+                         rows = NULL),
+               ncol = 1,
+               heights = c(1,4)),
+             nrow = 1)
+
+DESeq_vs_bayesian_encode_combined <- grid.arrange(Bayesian_vs_deseq_encode_full_plot,
+             DESeq_vs_bayesian_encode_table,
+             ncol = 1,
+             as.table = TRUE,
+             heights = c(2,1))
+```
+
+```{r plot-bayesian-iserman-results}
+
+iserman_condition_dictionary <- tibble(condition = c("WT_30", "WT_40", "WT_42"),
+                                       pretty_name = c(("WT 30C"), ("WT 40C"), ("WT 42C")))
+
+Bayesian_vs_deseq_iserman_full_results <- Bayesian_model_iserman_full_results |>
+  transmute(gene_name=rep(iserman_et_al_gene_names, 3),
+            bayes_log2_foldchange = log2(exp((+sup_latent - pel_latent))),
+            bayes_pvalue = pvalue,
+            condition) |>
+              inner_join(DESeq2_model_iserman_results |>
+                           transmute(gene_name,
+                                     condition = str_remove(condition, "C"),
+                                     DESeq_log2_foldchange = log2FoldChange,
+                                     DESeq_pvalue = ifelse(is.na(padj),1,padj)),
+                         by = c("gene_name", "condition")) |>
+  transmute(gene_name, 
+            condition,
+            bayes_log2_foldchange, 
+            DESeq_log2_foldchange,
+            `Differentially Fractionated` = ifelse((DESeq_pvalue < 0.05 & 
+                                                      bayes_pvalue > 0.975 &
+                                                      DESeq_log2_foldchange < 0),
+                                                   "Both",
+                                                   ifelse(DESeq_pvalue < 0.05 &
+                                                      DESeq_log2_foldchange < 0,
+                                                          "DESeq2 Only",
+                                                          ifelse(bayes_pvalue > 0.975,
+                                                                 "DiffFracQuant Only",
+                                                                 "Neither")))) |>
+  inner_join(iserman_condition_dictionary)
+
+Bayesian_vs_deseq_iserman_full_cor <- Bayesian_vs_deseq_iserman_full_results |>
+  group_by(pretty_name) |>
+  summarise(cor = cor(`bayes_log2_foldchange`, `DESeq_log2_foldchange`, use = "complete.obs"),
+            r_cor_label = paste(TeX(paste0("R = ", signif(cor,digits = 3)))))
+  
+
+Bayesian_vs_deseq_iserman_full_plot <- ggplot(Bayesian_vs_deseq_iserman_full_results) +
+  geom_point(aes(x = bayes_log2_foldchange, 
+                 y = DESeq_log2_foldchange,
+                 colour = `Differentially Fractionated`)) +
+  geom_abline(intercept = 0, slope = 1, colour = "black") +
+  facet_wrap(~pretty_name) +
+  labs(x = TeX("DiffFracQuant $log_2\\, (N^{Sup}/N^{Pel})$"),
+       y = TeX("DESeq2 $log_2\\, (N^{Sup}/N^{Pel})$"),
+       colour = "Differentially\nFractionated") +
+  coord_equal(xlim = c(-6, 6), ylim= c(-6, 6)) +
+  scale_colour_manual(values = c("#F8766D", "#00BA38", "#C77CFF", "#619CFF")) +
+  geom_hline(yintercept = 0, colour = "grey") +
+  geom_vline(xintercept = 0, colour = "grey") +
+  geom_text(aes(label = r_cor_label), 
+            data = Bayesian_vs_deseq_iserman_full_cor, 
+            x = -0.2, y = 5, hjust = 1, vjust = 0)
+
+```
+
+```{r DEseq-gene-ontology-analysis}
+yeast_40_DESeq_goids = read_tsv(here("yeast_40_DESeq_sig_GO.txt"))
+
+yeast_40_DiffFracQuant_goids = read_tsv(here("yeast_40_DiffFracQuant_sig_GO.txt"))
+
+top_yeast_40_DESeq_goids <- yeast_40_DESeq_goids |>
+  filter(!`GO biological process complete` %in% c("biological regulation (GO:0065007)",
+                                                  "ion transport (GO:0006811)",
+                                                  "ion transmembrane transport (GO:0034220)",
+                                                  "transposition, RNA-mediated (GO:0032197)",
+                                                  "organic anion transport (GO:0015711)",
+                                                  "regulation of cellular process (GO:0050794)",
+                                                  "regulation of biological process (GO:0050789)")) |>
+  slice_min(`upload_1 (FDR)`, n = 3) |>
+  transmute(`GO Term`= str_remove(`GO biological process complete`,
+                                  "\\(GO:[0-9]+\\)"),
+            `Rep`= `upload_1 (over/under)`,
+            FDR = `upload_1 (FDR)`)
+
+top_yeast_40_DiffFracQuant_goids <- yeast_40_DiffFracQuant_goids |>
+  filter(`GO biological process complete` %in% c("cellular aromatic compound metabolic process (GO:0006725)",
+                                                 "organonitrogen compound metabolic process (GO:1901564)",
+                                                  "nitrogen compound metabolic process (GO:0006807)",
+                                                 "heterocycle metabolic process (GO:0046483)",
+                                                 "primary metabolic process (GO:0044238)",
+                                                 "biological regulation (GO:0065007)",
+      "organic substance metabolic process (GO:0071704)",
+      "organic cyclic compound metabolic process (GO:1901360)" )) |>
+  slice_min(`upload_1 (FDR)`, n = 3) |>
+  transmute(`GO Term`= str_remove(`GO biological process complete`,
+                                  "\\(GO:[0-9]+\\)"),
+            `Rep`= `upload_1 (over/under)`,
+            FDR = `upload_1 (FDR)`)
+
+DESeq_vs_bayesian_iserman_table<- grid.arrange(
+  grid.arrange(textGrob(label = "40C DESeq2 GO Terms"),
+               tableGrob(top_yeast_40_DESeq_goids,
+                         theme = mytheme,
+                         rows = NULL),
+               ncol = 1,
+               heights = c(0.5,7)),
+  grid.arrange(textGrob(label = "40C DiffFracQuant GO Terms"),
+               tableGrob(top_yeast_40_DiffFracQuant_goids,
+                         theme = mytheme,
+                         rows = NULL),
+               ncol = 1,
+               heights = c(0.5,7)),
+             nrow = 1,
+  widths = c(1, 1.3))
+
+DESeq_vs_bayesian_encode_and_iserman_combined <- cowplot::plot_grid(cowplot::plot_grid(DESeq_vs_bayesian_encode_combined,
+                                      Bayesian_one_vs_two_rep_encode_plot,
+                                      nrow = 1,
+                                      rel_widths = c(2,1),
+                                      labels = c("A", "B"),
+                                      hjust = c(-0.5, 1)),
+                   cowplot::plot_grid(Bayesian_vs_deseq_iserman_full_plot,
+                                      DESeq_vs_bayesian_iserman_table,
+                                      ncol = 1,
+                                      rel_heights = c(1.7,1)),
+                   ncol = 1,
+                   rel_heights = c(1,1),
+                   labels = c("", "C"))
+
+```
+
+
+```{r save-graphs, eval=FALSE}
+ggsave(DESeq_vs_bayesian_combined, 
+       file = here("data/output/figures/DESeq_vs_bayesian_combined.png"),
+       dpi = 300,
+       width = 200,
+       height= 215,
+       units = "mm")
+
+ggsave(DESeq_vs_bayesian_encode_and_iserman_combined, 
+       file = here("data/output/figures/DESeq_vs_bayesian_encode_and_iserman_combined.png"),
+       dpi = 300,
+       width = 240,
+       height= 230,
+       units = "mm")
 ```

@@ -11,6 +11,18 @@ library(tidyverse)
 library(latex2exp)
 library(cowplot)
 
+mytheme <- gridExtra::ttheme_default(
+  core = list(padding = unit(c(2.5, 2.5), "mm")))
+
+theme_set(
+  theme_cowplot(font_size = 12, 
+                font_family = "sans",
+                rel_small = 10/12,
+                rel_tiny = 9/12,
+                rel_large = 12/12) %+replace%
+    theme(legend.position = "bottom",
+          legend.justification = "center"))
+
 knitr::opts_chunk$set(echo = FALSE)
 
 encode_data_files <- list.files(here("data/input/ENCODE_dataset"), full.names = TRUE)
@@ -63,12 +75,10 @@ encode_replicate_quality <- ggplot(encode_data_sets %>%
   scale_x_log10(labels = scales::label_log(), breaks = c(100, 10000, 1000000)) +
   scale_y_log10(labels = scales::label_log(), breaks = c(100, 10000, 1000000)) +
   coord_equal() +
-  theme_bw() +
   labs(x = "Biorep 1", y = "Biorep 2") + 
   geom_text(aes(label = r_cor_label), 
             data = encode_pearson_cor, 
-            x = 4.8, y = 6, 
-            size = 2.5, hjust = 1, vjust = 0)
+            x = 4.8, y = 6, hjust = 1, vjust = 0)
 
 yeast_stress_fraction_dictionary <- tibble(frac = c("pellet", "SN", "total"),
                                      pretty_name = c("Pellet", "Supernatent", "Total"))
@@ -92,13 +102,10 @@ yeast_stress_replicate_quality <- ggplot(yeast_stress_datasets %>%
   scale_x_log10(labels = scales::label_log(), breaks = c(100, 10000, 1000000)) +
   scale_y_log10(labels = scales::label_log(), breaks = c(100, 10000, 1000000)) +
   coord_equal() +
-  theme_bw() +
   labs(x = "Biorep 1", y = "Biorep 2", colour = "Condition") +
-  theme(legend.position = "bottom") + 
   geom_text(aes(label = r_cor_label), 
             data = yeast_stress_pearson_cor, 
-            x = 3.9, y = 5, 
-            size = 2.5, hjust = 1, vjust = 0)
+            x = 3.9, y = 5, hjust = 1, vjust = 0)
 
 simulated_fraction_dictionary <- tibble(condition = c(1, 2, 3),
                                      pretty_name = factor(c("Random", "Marginally Biased Fractionation",
@@ -112,7 +119,6 @@ simulated_dataset_comparison <- ggplot(simulated_datasets %>%
   facet_wrap(~pretty_name, nrow=1) + 
   scale_y_log10(labels = scales::label_log(), breaks = c(1, 100, 10000)) + 
   scale_x_log10(labels = scales::label_log(), breaks = c(1, 100, 10000)) +
-  theme_bw() +
   labs(x = "Fraction A", y ="Fraction B") +
   geom_abline(intercept = 0, slope = 1, colour = "grey") +
   coord_equal()
@@ -126,5 +132,6 @@ dataset_summary_plot <- plot_grid(simulated_dataset_comparison,
 
 ```
 ```{r output-graph, eval=FALSE}
-ggsave2(here("data/output/figures/fractionation_dataset_summary.png"), dataset_summary_plot, dpi = 300, width = 185, height= 240, units = "mm")
+ggsave2(here("data/output/figures/fractionation_dataset_summary.png"), 
+        dataset_summary_plot, dpi = 300, width = 185, height= 240, units = "mm")
 ```
