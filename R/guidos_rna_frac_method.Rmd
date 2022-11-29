@@ -233,29 +233,41 @@ stanmodel %>%
 }
 
 test_diff_condition <- function(stan_model){
-  latent_count_samples <- stan_model %>% 
-          spread_draws(sup_latent[condition, gene_name],
-                       pel_latent[condition, gene_name])
+  gene_count_samples <- stan_model %>% 
+          spread_draws(gene_count_condition[condition, gene_name])
   
-  summary_stats_ratio <- latent_count_samples %>%
+  pel_count_samples <- stan_model %>% 
+          spread_draws(pel_count_condition[condition, gene_name])
+  
+  summary_stats_ratio <- gene_count_samples %>%
           summarise_draws() %>% 
-    dplyr::select(gene_name, condition, variable, median) %>% 
-    group_by(gene_name, condition) %>% 
-    summarise(ratio = median[1]/median[2])
+    transmute(gene_name, condition, gene_count_condition = median) %>%
+    inner_join(pel_count_samples %>%
+                 summarise_draws() %>% 
+                 transmute(gene_name, condition, pel_count_condition = median)) 
   
   
-  latent_count_samples %>%
+  pel_count_samples %>%
     group_by(gene_name, condition) %>%
-    transmute(sup_latent = sample(sup_latent),
-              pel_latent = sample(pel_latent),
-              sup_pel_ratio = sup_latent / pel_latent) %>%
+    transmute(pel_count_condition = sample(pel_count_condition)) %>%
     ungroup() %>%
     group_by(gene_name) %>%
-    summarise(test_frac_across_condition(condition, sup_pel_ratio), .groups = "drop")  %>% 
+    summarise(test_frac_across_condition(condition, pel_count_condition), .groups = "drop")  %>% 
+    rename(p.value_frac=p.value) %>%
+    inner_join(gene_count_samples %>%
+                 group_by(gene_name, condition) %>%
+                 transmute(gene_count_condition = sample(gene_count_condition)) %>%
+                 ungroup() %>%
+                 group_by(gene_name) %>%
+                 summarise(test_frac_across_condition(condition, gene_count_condition), 
+                           .groups = "drop")  %>% 
+                 rename(p.value_total=p.value)) %>%
     inner_join(summary_stats_ratio, by = c("gene_name"="gene_name", "condition_A" = "condition")) %>%
-    rename(ratio_A = ratio) %>%
+    rename(pel_count_condition_A = pel_count_condition, 
+           gene_count_condition_A = gene_count_condition) %>%
     inner_join(summary_stats_ratio, by = c("gene_name"="gene_name", "condition_B" = "condition")) %>%
-    rename(ratio_B = ratio)
+    rename(pel_count_condition_B = pel_count_condition, 
+           gene_count_condition_B = gene_count_condition)
 }
 
 ```
